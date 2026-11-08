@@ -1,0 +1,34 @@
+{
+  "name": "haszno-skill",
+  "version": "0.1.0",
+  "description": "Haszno Claude-skill és egységes telepítő / Claude agent skill and unified installer for Haszno",
+  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/haszno-labs/haszno-skill.git"
+  },
+  "license": "MIT",
+  "files": [
+    "skills/",
+    "install.sh",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "validate": "bash -n install.sh && echo 'install.sh: syntax OK'",
+    "shellcheck": "shellcheck install.sh || true"
+  },
+  "keywords": [
+    "haszno",
+    "dropshipping",
+    "claude-skill",
+    "mcp",
+    "ai-agent"
+  ]
+}

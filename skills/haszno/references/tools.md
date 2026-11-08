@@ -1,0 +1,463 @@
+# Haszno MCP Tool Reference
+
+All tools are prefixed `haszno_`. Read-only tools can be called freely.
+Every write tool requires a `confirm: true` argument — the agent must not pass
+`true` until the user has acknowledged what will happen.
+
+---
+
+## Account & settings (`haszno_account_*`)
+
+### `haszno_account_get_stats` _(read-only)_
+
+Dashboard summary.
+
+**Returns:**
+```json
+{
+  "products": 42,
+  "losing": 3,
+  "overMarket": 1,
+  "toFix": 4,
+  "orders": 12
+}
+```
+
+Fields:
+- `losing` — products whose current price yields a margin below `minMarginPct`
+- `overMarket` — products priced above the market minimum (losing sales)
+- `toFix` — `losing + overMarket`
+
+---
+
+### `haszno_account_get_impact` _(read-only)_
+
+Profit impact of pricing automation.
+
+**Parameters:**
+- `days` _(optional, default 30)_ — look-back window
+
+**Returns:**
+```json
+{
+  "days": 30,
+  "extraProfit": 45200,
+  "baseline": 320000,
+  "pctGain": 14.1,
+  "orders": 18,
+  "autoForwardedOrders": 15
+}
+```
+
+---
+
+### `haszno_account_get_settings` _(read-only)_
+
+Current pricing rules (singleton row).
+
+**Returns:**
+```json
+{
+  "id": 1,
+  "undercutPct": 1,
+  "minMarginPct": 10,
+  "vatPct": 27,
+  "automationPaused": false
+}
+```
+
+---
+
+### `haszno_account_update_settings` _(write — confirm required)_
+
+Update pricing rules.
+
+**Parameters:**
+- `undercutPct` _(integer 0–50)_ — % to undercut market minimum
+- `minMarginPct` _(integer 0–90)_ — minimum net margin the engine maintains
+- `vatPct` _(integer 0–50)_ — VAT rate for all margin calculations
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_account_list_suppliers` _(read-only)_
+
+List the shop's own configured suppliers (not the network).
+
+**Returns:** array of `Supplier` objects with `id`, `name`, `orderMode`, `network`, `category`, `country`.
+
+---
+
+## Products (`haszno_products_*`)
+
+### `haszno_products_list` _(read-only)_
+
+List own shop products.
+
+**Parameters:**
+- `all` _(optional boolean, default false)_ — include unlisted products
+
+**Returns:** array of `Product` with:
+- `id`, `supplierId`, `sku`, `name`, `costNet`, `stock`, `rrpGross`
+- `marketMinGross`, `marketShop` — lowest known market price and shop name
+- `priceGross` — current shop price
+- `listed` — whether currently listed
+- `current` — `{ priceGross, marginNet, marginPct }` for the current price
+- `recommended` — `{ priceGross, marginNet, marginPct }` from the pricing engine
+
+---
+
+### `haszno_products_update` _(write — confirm required)_
+
+Update market data or override price for a product.
+
+**Parameters:**
+- `id` _(integer)_ — product id
+- `marketMinGross` _(optional integer | null)_ — override market minimum
+- `marketShop` _(optional string | null)_ — competing shop name
+- `priceGross` _(optional integer)_ — manual price override
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_products_set_listing` _(write — confirm required)_
+
+List or unlist a product.
+
+**Parameters:**
+- `id` _(integer)_ — product id
+- `listed` _(boolean)_ — `true` = list, `false` = unlist
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_products_apply_prices` _(write — confirm required)_
+
+Apply recommended prices (from the pricing engine) to products.
+
+**Parameters:**
+- `ids` _(optional integer[])_ — subset to apply; omit for all products
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ changed: number, total: number }`
+
+---
+
+### `haszno_products_ai_description` _(write — confirm required)_
+
+Generate an AI product description.
+
+**Parameters:**
+- `id` _(integer)_ — product id
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ text: string }`
+
+---
+
+## Catalogue (`haszno_catalog_*`)
+
+Network supplier catalogue. All tools are read-only.
+The `supplier-view` endpoint returns aggregated stats only — never individual shop margins.
+
+### `haszno_catalog_list_suppliers` _(read-only)_
+
+List all network suppliers.
+
+**Returns:** array of `NetworkSupplier` with `id`, `name`, `category`, `country`, `description`, `shopUrl`.
+
+---
+
+### `haszno_catalog_get_products` _(read-only)_
+
+Get a network supplier's product catalogue.
+
+**Parameters:**
+- `supplierId` _(integer)_
+
+**Returns:** array of `NetworkProduct` with `id`, `sku`, `name`, `category`,
+`wholesaleNet`, `rrpGross`, `stock`, `potentialMargin` (margin at minimum undercut price).
+
+---
+
+### `haszno_catalog_supplier_view` _(read-only)_
+
+Aggregated reseller market view for a supplier (legal note: shows aggregated stats
+across all resellers; individual margins are not exposed).
+
+**Parameters:**
+- `supplierId` _(integer)_
+
+**Returns:** `SupplierView`:
+```json
+{
+  "supplier": { "id": 1, "name": "Demo Supplier", "category": "...", "country": "HU", "shopUrl": "..." },
+  "products": [
+    {
+      "id": 1, "sku": "ABC-123", "name": "...",
+      "wholesaleNet": 3500, "rrpGross": 9990, "stock": 10,
+      "resellerCount": 5, "minGross": 8200, "avgGross": 8800,
+      "maxGross": 9500, "belowRrp": 4, "lossCount": 1, "saturation": 0.6
+    }
+  ]
+}
+```
+
+---
+
+## Proposals (`haszno_proposals_*`)
+
+Price proposals are generated by the pricing engine. Review them before approving.
+
+### `haszno_proposals_list` _(read-only)_
+
+List price proposals.
+
+**Parameters:**
+- `status` _(optional: `"pending"` | `"approved"` | `"rejected"`)_
+
+**Returns:** array of `Proposal` with `id`, `productId`, `sku`, `name`,
+`currentPriceGross`, `proposedPriceGross`, `marginPct`, `status`, `createdAt`.
+
+---
+
+### `haszno_proposals_approve` _(write — destructiveHint — confirm required)_
+
+Approve price proposals (prices are changed immediately).
+
+**Parameters:**
+- `ids` _(optional integer[])_ — specific proposal ids; omit to approve all pending
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ batchId: string, applied: number }` — save `batchId` for potential rollback.
+
+---
+
+### `haszno_proposals_reject` _(write — confirm required)_
+
+Reject price proposals.
+
+**Parameters:**
+- `ids` _(integer[])_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_proposals_rollback` _(write — destructiveHint — confirm required)_
+
+Roll back an approved batch (restores previous prices).
+
+**Parameters:**
+- `batchId` _(string)_ — from the approve response
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ rolledBack: number }`
+
+---
+
+## Rules (`haszno_rules_*`)
+
+### `haszno_rules_list_templates` _(read-only)_
+
+List built-in rule templates (starting points for new rules).
+
+**Returns:** array of `RuleTemplate` with `key`, `name`, `description`.
+
+---
+
+### `haszno_rules_list` _(read-only)_
+
+List all rules.
+
+**Returns:** array of `Rule` with `id`, `name`, `enabled`, `trigger`,
+`conditions` (`[{ field, op, value }]`), `actions` (`[{ type, params }]`), `template`.
+
+---
+
+### `haszno_rules_create` _(write — confirm required)_
+
+Create a new rule.
+
+**Parameters:**
+- `name` _(string)_
+- `trigger` _(string)_ — e.g. `"manual"`, `"schedule:daily"`, `"market_update"`
+- `conditions` _(RuleCondition[])_
+- `actions` _(RuleAction[])_
+- `template` _(optional string)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_rules_update` _(write — confirm required)_
+
+Update an existing rule.
+
+**Parameters:**
+- `id` _(integer)_
+- Partial rule fields (`name`, `enabled`, `conditions`, `actions`, …)
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_rules_delete` _(write — destructiveHint — confirm required)_
+
+Delete a rule permanently.
+
+**Parameters:**
+- `id` _(integer)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_rules_run` _(write — confirm required)_
+
+Manually trigger a single rule.
+
+**Parameters:**
+- `id` _(integer)_
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `RunResult` with `applied`, `skipped`, `errors`.
+
+---
+
+### `haszno_rules_run_all` _(write — confirm required)_
+
+Run all rules with a `"manual"` trigger.
+
+**Parameters:**
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_rules_trigger` _(write — confirm required)_
+
+Fire a named event trigger (runs all rules subscribed to that trigger).
+
+**Parameters:**
+- `name` _(string)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_rules_list_runs` _(read-only)_
+
+Rule execution log.
+
+**Parameters:**
+- `limit` _(optional integer, default 20)_
+
+**Returns:** array of `RuleRun` with `id`, `ruleId`, `ruleName`, `status`, `appliedCount`, `createdAt`.
+
+---
+
+### `haszno_automation_get` _(read-only)_
+
+Get the automation kill switch state.
+
+**Returns:** `{ automationPaused: boolean }`. Check this before any bulk write.
+
+---
+
+### `haszno_automation_set` _(write — idempotentHint — confirm required)_
+
+Pause or resume the automation engine.
+
+**Parameters:**
+- `paused` _(boolean)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+## Orders (`haszno_orders_*`)
+
+### `haszno_orders_list` _(read-only)_
+
+List recent orders.
+
+**Returns:** array of `Order` with `id`, `externalId`, `customerName`, `address`,
+`status` (`received | forwarded | shipped | error`), `totalGross`, `items`, `events`, `createdAt`.
+
+---
+
+### `haszno_orders_ship` _(write — idempotentHint — confirm required)_
+
+Mark an order as shipped (once the supplier confirms).
+
+**Parameters:**
+- `id` _(integer)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_orders_receive` _(write — confirm required)_
+
+Manually inject an incoming order (webhook alternative).
+
+**Parameters:**
+- `externalId` _(string)_
+- `customerName` _(string)_
+- `address` _(string)_
+- `items` _(array of `{ sku: string, qty: number }`)_
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+## Ideas (`haszno_ideas_*`)
+
+### `haszno_ideas_list` _(read-only)_
+
+AI product idea shortlist — products from the network catalogue scored by trend + margin.
+
+**Returns:** `Recommendations`:
+```json
+{
+  "anchor": "hu",
+  "geo": "HU",
+  "items": [
+    {
+      "id": 1, "sku": "ABC-123", "name": "...",
+      "costNet": 3500, "stock": 10, "supplierName": "...",
+      "recommended": { "priceGross": 8500, "marginNet": 1200, "marginPct": 16.1 },
+      "trendScore": 0.87
+    }
+  ]
+}
+```
+
+---
+
+### `haszno_ideas_fill_keywords` _(write — confirm required)_
+
+Fill missing trend keywords for products via AI (batch job).
+
+**Parameters:**
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+## Feeds (`haszno_feeds_*`)
+
+### `haszno_feeds_import_supplier` _(write — confirm required)_
+
+Import a supplier's product feed (CSV or XML).
+
+**Parameters:**
+- `supplierId` _(integer)_
+- `format` _(`"csv"` | `"xml"`)_
+- `content` _(string)_ — raw file content
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ created: number, updated: number, total: number }`
+
+---
+
+### `haszno_feeds_import_market` _(write — confirm required)_
+
+Import market competitor prices (CSV format).
+
+**Parameters:**
+- `content` _(string)_ — raw file content
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ matched: number, total: number }`
