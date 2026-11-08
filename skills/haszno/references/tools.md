@@ -524,10 +524,20 @@ Push import-list items to the connected webshop.
 
 **Parameters:**
 - `ids` _(integer[])_ — import list item IDs from `haszno_import_list_list`
-- `targetConnectionId` _(integer, optional)_ — target connection; uses shop default if omitted
-- `confirm` _(boolean, must be `true`)_
+- `targetConnectionId` _(integer, optional)_ — target store connection; if omitted, pushes to the shop's local product list via the default import-list endpoint
+- `confirm` _(boolean, must be `true`)_ — without `true`, returns a dry-run preview and does **not** call the API
 
-**Returns:** `{ pushed: number, failed: number, errors: string[] }`
+**Returns (with `targetConnectionId`):** `ConnectStorePushResult`
+```json
+{ "pushed": 2, "failed": 1, "errors": ["Widget Pro: out of stock"] }
+```
+
+**Returns (without `targetConnectionId`):** `ImportListPushResult`
+```json
+{ "pushed": 3 }
+```
+
+The two paths call different API endpoints: with a target → `POST /api/connect/stores/:id/push`; without → `POST /api/import-list/push`. Check for the presence of `failed`/`errors` before accessing them — they are only present when a target connection was used.
 
 ---
 
@@ -552,15 +562,18 @@ Platforms: `shoprenter`, `unas`, `woocommerce`, `shopify`, `medusa`, `mock`
 
 ## P2P peer invites (`haszno_peers_*`)
 
-### `haszno_peers_invite_create` _(write)_
+### `haszno_peers_invite_create` _(write — confirm required)_
 
 Create an invite code to share a supplier's catalogue with a partner shop.
 
 **Parameters:**
 - `supplierId` _(integer)_ — supplier to share
 - `expiresAt` _(ISO-8601 datetime string)_ — expiry, must be in the future
+- `confirm` _(boolean, must be `true`)_ — without `true`, returns a dry-run preview and does **not** call the API
 
 **Returns:** `PeerInvite` — includes `code` to share with the partner
+
+**Dry-run (confirm=false):** returns `{ preview: true, message, supplierId, expiresAt }` — no invite is created.
 
 ---
 

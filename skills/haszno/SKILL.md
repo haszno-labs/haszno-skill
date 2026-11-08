@@ -130,7 +130,8 @@ so `haszno login` (or setting `HASZNO_API_KEY`) once configures both.
 1. **Read-only by default.** Use read tools and list commands freely, without asking.
 2. **Every write requires `confirm: true` / explicit user confirmation.**
    Writes: approve, reject, rollback, run rule, list/unlist product, apply prices,
-   import feed, update settings, ship order.
+   import feed, update settings, ship order, import-list push, peer invite create,
+   peer invite accept.
 3. **Check the automation kill switch first.**
    Before any bulk write, call `haszno_automation_get` (MCP) or
    `haszno rules automation` (CLI) and confirm `automationPaused` is `false`.
@@ -195,7 +196,27 @@ Goal: browse the partner catalogue and find products worth listing.
 
 Do not list products automatically. Always confirm the shortlist first.
 
-### 4 — Daily dropshipping check
+### 4 — Push import-list items to a connected store
+
+Goal: push staged import-list items to a connected webshop (WooCommerce, Shopify, etc.).
+
+```
+1. Check the connection:  haszno_connections_list  →  use id where status = "kapcsolva"
+2. List staged items:     haszno_import_list_list(status="varakozik")
+3. Confirm with user: which item IDs to push, which connection to use
+4. Push to connected store (returns {pushed, failed, errors}):
+   haszno_import_list_push(ids=[...], targetConnectionId=<id>, confirm=true)
+   OR push to local product list only (returns {pushed}):
+   haszno_import_list_push(ids=[...], confirm=true)   # no targetConnectionId
+5. Report pushed count; if failed > 0, show errors to the user
+```
+
+**Two API paths — both require confirm=true:**
+- With `targetConnectionId` → `POST /api/connect/stores/:id/push` → returns `{ pushed, failed, errors }`
+- Without `targetConnectionId` → `POST /api/import-list/push` → returns `{ pushed }` only
+Never dereference `failed`/`errors` unless `targetConnectionId` was given.
+
+### 5 — Daily dropshipping check
 
 Goal: surface the most important issues in one pass.
 
@@ -222,7 +243,7 @@ profit impact. Ask the user which item to drill into.
 | `catalogue` | `haszno_catalogue_search` | `haszno_import_list_add` |
 | `importList` | `haszno_import_list_list` | `haszno_import_list_push` (confirm required) |
 | `connections` | `haszno_connections_list` | — |
-| `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create`, `haszno_peers_invite_accept` (confirm) |
+| `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
