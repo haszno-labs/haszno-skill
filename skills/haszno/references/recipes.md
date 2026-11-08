@@ -318,3 +318,156 @@ haszno catalog products <id> --json \
 # Orders stuck in error
 haszno orders list --json | jq '[.[] | select(.status=="error") | {id,externalId,customerName}]'
 ```
+
+---
+
+## Recipe 6: Húzd be a barátod/beszállítód termékeit a boltodba
+
+Ez a recept leírja, hogyan lehet egy Haszno-partner szállítójának termékeit megkeresni,
+az import listára felvenni, majd a bekötött webshopba kiküldeni — és hogyan lehet
+meghívóval P2P-partnerséget kialakítani.
+
+### A teljes folyamat
+
+#### 1. lépés — Katalógus böngészése, termékek kiválasztása
+
+**MCP:**
+```
+1. haszno_catalogue_search(q="...", inStock=true, minMarginPct=15, sort="margin_desc")
+   → találd meg a legjobb margójú, készleten lévő termékeket
+   → jegyezd meg az item.id értékeket (katalógus termék ID-k)
+
+2. haszno_catalogue_search(cats="elektronika", partner=42, pageSize=50)
+   → kategória + partner szűrés kombinálva
+```
+
+**CLI:**
+```bash
+# Készleten lévő, 15%+ margójú elektronika, margin szerint rendezve
+haszno catalogue search --cats elektronika --min-margin 15 --in-stock \
+  --sort margin_desc --json | jq '.items[:10] | .[] | {id,name,m:.marginPct,stock}'
+```
+
+---
+
+#### 2. lépés — Termékek hozzáadása az import listához
+
+A katalógus `item.id` értékei (nem a saját `products.id`-k) kellenek ide.
+
+**MCP:**
+```
+haszno_import_list_add(networkProductIds=[101, 102, 103])
+→ { added: 3, skipped: 0 }
+```
+
+**CLI:**
+```bash
+haszno import add 101 102 103
+```
+
+---
+
+#### 3. lépés — Import lista ellenőrzése
+
+**MCP:**
+```
+haszno_import_list_list(status="varakozik")
+→ visszaadja a kiküldésre váró tételek id-jait
+```
+
+**CLI:**
+```bash
+haszno import list --status varakozik --json | jq '[.[] | {id, name, sku}]'
+```
+
+---
+
+#### 4. lépés — Célbolt kiválasztása
+
+**MCP:**
+```
+haszno_connections_list(status="kapcsolva")
+→ csak a tényleg bekötött boltok; jegyezd meg a connection id-t
+```
+
+**CLI:**
+```bash
+haszno connections list --status kapcsolva --json | jq '.[] | {id,name,platform}'
+```
+
+---
+
+#### 5. lépés — Termékek kiküldése a webshopba
+
+> Mindig mutasd meg a felhasználónak mit fog kiküldeni, és kérd a megerősítést.
+
+**MCP:**
+```
+# Előnézet (confirm=false):
+haszno_import_list_push(ids=[5,6,7], targetConnectionId=1, confirm=false)
+
+# Megerősítés után:
+haszno_import_list_push(ids=[5,6,7], targetConnectionId=1, confirm=true)
+→ { pushed: 3, failed: 0, errors: [] }
+```
+
+**CLI:**
+```bash
+# Előnézet --yes nélkül
+haszno import push --ids 5,6,7 --target 1
+
+# Tényleges kiküldés
+haszno import push --ids 5,6,7 --target 1 --yes
+```
+
+---
+
+### P2P-partner meghívása (barát/ismerős szállítójának termékeit is behozhatod)
+
+Ha valaki másnak is hozzáférést akarsz adni az egyik szállítódhoz:
+
+#### Meghívó küldése (a szállító gazdája)
+
+**MCP:**
+```
+haszno_peers_invite_create(supplierId=42, expiresAt="2026-12-31T23:59:00Z")
+→ { code: "inv_abc123", ... }
+# Add át a kódot a partnernek
+```
+
+**CLI:**
+```bash
+haszno peers invite --supplier 42 --expires 2026-12-31T23:59:00Z
+# → Meghívó kód: inv_abc123
+```
+
+#### Meghívó elfogadása (a partner oldalán)
+
+**MCP:**
+```
+# Előnézet:
+haszno_peers_invite_accept(code="inv_abc123", acceptorId="partnerbolt", confirm=false)
+
+# Elfogadás:
+haszno_peers_invite_accept(code="inv_abc123", acceptorId="partnerbolt", confirm=true)
+→ PeerLink: { id, supplierId: 42, partner: "partnerbolt", createdAt }
+```
+
+**CLI:**
+```bash
+haszno peers accept inv_abc123 --acceptor partnerbolt --yes
+```
+
+Sikeres elfogadás után a `partnerbolt` shop eléri a szállító #42 katalógusát a
+`haszno_catalogue_search` eszközzel.
+
+---
+
+### Összefoglalás — mit mond el a felhasználónak
+
+> "Megtaláltam 15 terméket az elektronika kategóriában, 15%+ margóval, készleten.
+>  Hozzáadtam az import listához. A kapcsolva lévő 'Fő webshop' (ID: 1) felé kiküldöm,
+>  3 terméket. Megerősíted?"
+
+Visszajelzés: `{ pushed: 3, failed: 0 }` → "3 termék sikeresen kiküldve a webshopba."
+
