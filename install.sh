@@ -84,8 +84,9 @@ ensure_repo() {
         "$src/" "$dest/"
     else
       log "  Másolás helyi forrásból: $src → $dest"
-      mkdir -p "$(dirname "$dest")"
-      cp -a "$src" "$dest"
+      mkdir -p "$dest"
+      rsync -a --exclude='.git' --exclude='node_modules' --exclude='dist' \
+        "$src/" "$dest/"
     fi
     return 0
   fi
@@ -242,6 +243,7 @@ uninstall() {
 
   # HASZNO_HOME törlése
   if [ -d "$HASZNO_HOME" ]; then
+    chmod -R u+rwx "$HASZNO_HOME" 2>/dev/null || true
     rm -rf "$HASZNO_HOME"
     log "  Könyvtár törölve: $HASZNO_HOME"
   fi
