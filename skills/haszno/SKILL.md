@@ -2,12 +2,17 @@
 name: haszno
 description: >
   Work with Haszno dropshipping data: query partner catalogue, review and approve
-  price proposals, manage automation rules, check orders, and find new product ideas.
-  Use when the user mentions Haszno, dropshipping pricing, price proposals (árajánlat),
-  automation rules (automatika), product margins, Árukereső feed, supplier catalogue,
+  price proposals, manage automation rules, check orders, find new product ideas,
+  connect webshops (bolt-bekötés), manage P2P peer partner invites, and read
+  aggregated market blog posts. Use when the user mentions Haszno, dropshipping
+  pricing, price proposals (árajánlat), automation rules (automatika), product
+  margins, Árukereső feed, supplier catalogue, connecting a webshop (bekötés,
+  WooCommerce, Shopify), import list (import lista), push products to shop
+  (termékek kiküldése), partner invite (meghívó), peer link (partner kapcsolat),
   or asks to run a daily dropshipping check. Also triggers on: approve proposals,
-  reject proposals, run rule, margin check, veszteséges termékek, árazás automatizálás,
-  partnerkatekógus, termékötlet, dropshipping ügynök.
+  reject proposals, run rule, margin check, veszteséges termékek, árazás
+  automatizálás, partnerkatekógus, termékötlet, dropshipping ügynök,
+  bolt-bekötés, barát meghívása, beszállító katalógus, heti összefoglaló.
 triggers:
   - haszno
   - haszno.hu
@@ -23,6 +28,13 @@ triggers:
   - dropshipping check
   - pricing rules
   - árazás
+  - bolt-bekötés
+  - import lista
+  - termékek kiküldése
+  - meghívó
+  - partner kapcsolat
+  - heti összefoglaló
+  - havi összefoglaló
 ---
 
 # Haszno agent skill
@@ -207,6 +219,11 @@ profit impact. Ask the user which item to drill into.
 | `account` | `get_stats`, `get_impact`, `get_settings`, `list_suppliers` | `update_settings` |
 | `products` | `list` (own shop) | `update`, `set_listing`, `apply_prices`, `ai_description` |
 | `catalog` | `list_suppliers`, `get_products`, `supplier_view` | — (read-only) |
+| `catalogue` | `haszno_catalogue_search` | `haszno_import_list_add` |
+| `importList` | `haszno_import_list_list` | `haszno_import_list_push` (confirm required) |
+| `connections` | `haszno_connections_list` | — |
+| `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create`, `haszno_peers_invite_accept` (confirm) |
+| `blog` | `haszno_blog_latest` | — (public read-only) |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
 | `orders` | `list` | `ship`, `receive` |

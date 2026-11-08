@@ -299,3 +299,109 @@ Import a supplier's product feed from a local file. **Write — prompts for conf
 ### `haszno feeds import-market --file <path>`
 
 Import competitor market prices from a CSV file. **Write — prompts for confirmation.**
+
+---
+
+## Catalogue search (`haszno catalogue`)
+
+### `haszno catalogue search`
+
+Search the partner product catalogue.
+
+```bash
+haszno catalogue search [--q <szöveg>] [--cats <keys>] [--partner <id>]
+                         [--min-margin <pct>] [--max-price <ft>] [--min-price <ft>]
+                         [--in-stock] [--country <kód>]
+                         [--sort margin_desc|price_asc|price_desc|name_asc]
+                         [--page <n>] [--page-size <n>]
+                         [--json]
+```
+
+---
+
+## Import list (`haszno import`)
+
+### `haszno import list`
+
+List items in the import staging list.
+
+```bash
+haszno import list [--status varakozik|kuldve|kesz|hiba] [--partner <id>] [--q <text>] [--json]
+```
+
+---
+
+### `haszno import add <id> [<id>...]`
+
+Add catalogue products to the import list by their catalogue product IDs.
+
+```bash
+haszno import add 101 102 103
+```
+
+---
+
+### `haszno import push --ids <ids> [--target <connectionId>] [--yes]`
+
+Push import-list items to the connected webshop. **Write — requires `--yes`.**
+
+```bash
+haszno import push --ids 5,6,7 --target 1 --yes
+```
+
+---
+
+## Store connections (`haszno connections`)
+
+### `haszno connections list`
+
+List connected webshop store connections.
+
+```bash
+haszno connections list [--status uj|domain_ok|kapcsolva|hiba] [--json]
+```
+
+---
+
+## P2P peer invites (`haszno peers`)
+
+### `haszno peers invite --supplier <id> --expires <datetime>`
+
+Create an invite code to share a supplier with a partner shop.
+
+```bash
+haszno peers invite --supplier 42 --expires 2026-12-31T23:59:00Z
+```
+
+---
+
+### `haszno peers list`
+
+List your own invite codes.
+
+```bash
+haszno peers list [--json]
+```
+
+---
+
+### `haszno peers accept <code> --acceptor <shop> [--yes]`
+
+Accept a peer invite code. **Write — requires `--yes`.**
+
+```bash
+haszno peers accept inv_abc123 --acceptor mybolt --yes
+```
+
+---
+
+## Blog / market insights (`haszno blog`)
+
+### `haszno blog latest`
+
+Show the latest market insight blog post(s).
+
+```bash
+haszno blog latest [--period het|honap] [--limit <n>] [--json]
+```
+

@@ -461,3 +461,145 @@ Import market competitor prices (CSV format).
 - `confirm` _(boolean, must be `true`)_
 
 **Returns:** `{ matched: number, total: number }`
+
+---
+
+## Catalogue search (`haszno_catalogue_search`)
+
+### `haszno_catalogue_search` _(read-only)_
+
+Search the partner product catalogue.
+
+**Parameters:**
+- `q` _(string, optional)_ — free-text search on name or category
+- `cats` _(string, optional)_ — comma-separated category keys, e.g. `"elektronika,ruházat"`
+- `partner` _(integer, optional)_ — filter by supplier/partner id
+- `minMarginPct` _(number, optional)_ — minimum margin %, e.g. `15`
+- `maxPrice` _(number, optional)_ — maximum RRP gross in HUF
+- `minPrice` _(number, optional)_ — minimum RRP gross in HUF
+- `inStock` _(boolean, optional)_ — only in-stock products
+- `hasImage` _(boolean, optional)_ — only products with an image
+- `country` _(string, optional)_ — supplier country code, e.g. `"HU"`
+- `sort` _(`"margin_desc" | "price_asc" | "price_desc" | "name_asc"`, optional)_
+- `page` _(integer, optional, default 1)_
+- `pageSize` _(integer, optional, default 24, max 100)_
+
+**Returns:** `{ items: CatalogueItem[], total: number, facets: CatalogueFacets }`
+
+Each `CatalogueItem`: `id, name, imageUrl, partnerId, partnerName, partnerCountry, category, categoryKey, wholesaleNet, rrpGross, marginNet, marginPct, stock, inImportList, inShop`
+
+---
+
+## Import list (`haszno_import_list_*`)
+
+### `haszno_import_list_list` _(read-only)_
+
+List items in the import staging list.
+
+**Parameters:**
+- `status` _(`"varakozik" | "kuldve" | "kesz" | "hiba"`, optional)_ — filter by push status
+- `partner` _(integer, optional)_ — filter by supplier id
+- `q` _(string, optional)_ — free-text search
+
+**Returns:** `{ items: ImportListItem[], total: number }`
+
+Each `ImportListItem`: `id, networkProductId, name, sku, partnerName, wholesaleNet, rrpGross, stock, pushStatus, targetConnectionId, targetExternalId, addedAt`
+
+---
+
+### `haszno_import_list_add` _(write, non-destructive)_
+
+Add network/catalogue products to the import list.
+
+**Parameters:**
+- `networkProductIds` _(integer[], 1–100)_ — IDs from `haszno_catalogue_search`
+
+**Returns:** `{ added: number, skipped: number }`
+
+---
+
+### `haszno_import_list_push` _(write — confirm required)_
+
+Push import-list items to the connected webshop.
+
+**Parameters:**
+- `ids` _(integer[])_ — import list item IDs from `haszno_import_list_list`
+- `targetConnectionId` _(integer, optional)_ — target connection; uses shop default if omitted
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ pushed: number, failed: number, errors: string[] }`
+
+---
+
+## Store connections (`haszno_connections_list`)
+
+### `haszno_connections_list` _(read-only)_
+
+List connected webshop store connections.
+
+**Parameters:**
+- `status` _(`"uj" | "domain_ok" | "kapcsolva" | "hiba"`, optional)_
+
+**Returns:** `{ connections: StoreConnection[] }`
+
+Each `StoreConnection`: `id, platform, name, status, domain, lastError, connectedAt, lastSyncAt, createdAt`
+
+Status values: `uj` (new/setup), `domain_ok` (domain verified), `kapcsolva` (connected), `hiba` (error)
+
+Platforms: `shoprenter`, `unas`, `woocommerce`, `shopify`, `medusa`, `mock`
+
+---
+
+## P2P peer invites (`haszno_peers_*`)
+
+### `haszno_peers_invite_create` _(write)_
+
+Create an invite code to share a supplier's catalogue with a partner shop.
+
+**Parameters:**
+- `supplierId` _(integer)_ — supplier to share
+- `expiresAt` _(ISO-8601 datetime string)_ — expiry, must be in the future
+
+**Returns:** `PeerInvite` — includes `code` to share with the partner
+
+---
+
+### `haszno_peers_invite_list` _(read-only)_
+
+List your created invite codes.
+
+**Returns:** `{ invites: PeerInvite[] }`
+
+Each `PeerInvite`: `id, code, supplierId, expiresAt, acceptedBy, acceptedAt, revokedAt, createdAt`
+
+---
+
+### `haszno_peers_invite_accept` _(write — confirm required)_
+
+Accept a peer invite code and establish a partner link.
+
+**Parameters:**
+- `code` _(string)_ — the invite code
+- `acceptorId` _(string)_ — your shop/tenant identifier
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `PeerLink` — `{ id, supplierId, partner, createdAt }`
+
+---
+
+## Blog / market insights (`haszno_blog_latest`)
+
+### `haszno_blog_latest` _(read-only)_
+
+Fetch the latest published market insight blog post(s). Data is anonymised aggregate from >= 5 shops.
+
+**Parameters:**
+- `period` _(`"het" | "honap"`, optional)_ — weekly or monthly posts
+- `limit` _(integer 1–10, optional, default 1)_
+
+**Returns:** `{ posts: BlogPost[], total: number }`
+
+Each `BlogPost`: `id, slug, period, periodStart, periodEnd, title, summary, bodyMd, data, publishedAt, status, createdAt`
+
+`data` may include: `rankedCategories: [{category, score}]`, `rankedProducts: [{name, score}]`, `shopsCount`
+
