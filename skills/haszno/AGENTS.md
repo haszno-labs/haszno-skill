@@ -137,7 +137,7 @@ context about Haszno tools:
 ```markdown
 ## Haszno dropshipping tools
 
-This project uses the Haszno SaaS (haszno.hu) for dropshipping pricing automation.
+This project uses the Haszno SaaS (haszno.com) for dropshipping pricing automation.
 CLI: `haszno` (from `@haszno/cli`). MCP: `haszno_*` tools.
 Auth: `HASZNO_API_URL`, `HASZNO_API_KEY` env vars.
 
