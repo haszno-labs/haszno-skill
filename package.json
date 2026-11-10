@@ -18,6 +18,7 @@
     "skills/",
     "install.sh",
     "README.md",
+    "README.hu.md",
     "LICENSE"
   ],
   "scripts": {

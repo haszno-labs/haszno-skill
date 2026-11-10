@@ -15,7 +15,7 @@ description: >
   bolt-bekötés, barát meghívása, beszállító katalógus, heti összefoglaló.
 triggers:
   - haszno
-  - haszno.hu
+  - haszno.com
   - dropshipping
   - price proposal
   - árajánlat
@@ -39,7 +39,7 @@ triggers:
 
 # Haszno agent skill
 
-Haszno (haszno.hu) is a Hungarian SaaS that automates dropshipping pricing. This skill
+Haszno (haszno.com) is a Hungarian SaaS that automates dropshipping pricing. This skill
 teaches AI agents how to use `@haszno/mcp` and the `haszno` CLI safely.
 
 Detailed references live in `references/`:
@@ -264,4 +264,4 @@ Full signatures: `references/tools.md` (MCP) and `references/commands.md` (CLI).
 
 ## API reference
 
-See the Haszno documentation at haszno.hu/docs.
+See the Haszno documentation at https://docs.haszno.com/en/
