@@ -8,12 +8,8 @@
 #   bash install.sh              # telepítés / install
 #   bash install.sh --uninstall  # eltávolítás / uninstall
 #
-# Publikus változat (ha a repók nyilvánosak):
+# Egysoros telepítés / one-liner:
 #   curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh | bash
-#
-# Privát változat (jelenleg / currently private):
-#   gh repo clone haszno-labs/haszno-skill /tmp/haszno-skill-install
-#   bash /tmp/haszno-skill-install/install.sh
 #
 # Lokális fejlesztési override:
 #   HASZNO_SRC_DIR=~/Documents/medusa-shops/haszno-labs bash install.sh
@@ -64,7 +60,7 @@ check_prerequisites() {
 # Repo klónozása / frissítése — Strategy:
 #   1. HASZNO_SRC_DIR megadva → helyi másolat cp/rsync
 #   2. gh elérhető és autentikált → gh repo clone
-#   3. Fallback → git clone (nyilvános HTTPS; privátnál PAT kell)
+#   3. Fallback → git clone (nyilvános HTTPS)
 # ---------------------------------------------------------------------------
 ensure_repo() {
   local repo="$1"
@@ -115,7 +111,7 @@ ensure_repo() {
   local url="${GITHUB_BASE}/${repo}.git"
   log "  Klónozás: git clone $url"
   git clone --quiet "$url" "$dest" \
-    || err "Klónozás sikertelen: $url — Privát repóknál 'gh auth login' vagy PAT szükséges."
+    || err "Klónozás sikertelen: $url"
 }
 
 # ---------------------------------------------------------------------------
@@ -277,7 +273,7 @@ print_summary() {
   log " Skill:  $CLAUDE_SKILL_DIR/haszno/SKILL.md"
   log ""
   log " Konfiguráció:"
-  log "   export HASZNO_API_URL=https://your-shop.haszno.hu"
+  log "   export HASZNO_API_URL=https://haszno.com"
   log "   export HASZNO_API_KEY=your-api-key"
   log ""
   log " Eltávolítás: bash $HASZNO_HOME/haszno-skill/install.sh --uninstall"
