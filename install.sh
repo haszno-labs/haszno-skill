@@ -60,7 +60,7 @@ check_prerequisites() {
 # Repo klónozása / frissítése — Strategy:
 #   1. HASZNO_SRC_DIR megadva → helyi másolat cp/rsync
 #   2. gh elérhető és autentikált → gh repo clone
-#   3. Fallback → git clone (nyilvános HTTPS; privátnál PAT kell)
+#   3. Fallback → git clone (nyilvános HTTPS)
 # ---------------------------------------------------------------------------
 ensure_repo() {
   local repo="$1"
@@ -111,7 +111,7 @@ ensure_repo() {
   local url="${GITHUB_BASE}/${repo}.git"
   log "  Klónozás: git clone $url"
   git clone --quiet "$url" "$dest" \
-    || err "Klónozás sikertelen: $url — Privát repóknál 'gh auth login' vagy PAT szükséges."
+    || err "Klónozás sikertelen: $url"
 }
 
 # ---------------------------------------------------------------------------
