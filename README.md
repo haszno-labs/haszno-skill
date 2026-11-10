@@ -19,17 +19,14 @@ Ez a repó két dolgot tartalmaz:
 
 ## Gyors telepítés
 
-### Ha a repók nyilvánosak (later):
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh | bash
 ```
 
-### Amíg a repók privátak (most):
+Vagy klónozva:
 
 ```bash
-# gh szükséges és be kell jelentkezni:
-gh repo clone haszno-labs/haszno-skill /tmp/haszno-skill-install
+git clone https://github.com/haszno-labs/haszno-skill.git /tmp/haszno-skill-install
 bash /tmp/haszno-skill-install/install.sh
 ```
 
@@ -51,7 +48,7 @@ bash ~/.haszno/haszno-skill/install.sh --uninstall
 ## Konfiguráció
 
 ```bash
-export HASZNO_API_URL=https://your-shop.haszno.hu
+export HASZNO_API_URL=https://haszno.com
 export HASZNO_API_KEY=your-api-key
 ```
 
@@ -113,7 +110,7 @@ dropshipping automation SaaS (haszno.hu). It contains:
   Clones or updates each, builds CLI and MCP, links the CLI globally, registers the
   MCP with Claude Code, and copies the skill to `~/.claude/skills/haszno`.
 
-Requires: `git`, `node >= 20`, `npm`. Optional: `gh` (for private repos), `claude`.
+Requires: `git`, `node >= 20`, `npm`. Optional: `claude`.
 
 ---
 

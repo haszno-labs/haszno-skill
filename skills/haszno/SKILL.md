@@ -54,7 +54,7 @@ Detailed references live in `references/`:
 ### Authentication
 
 ```bash
-export HASZNO_API_URL=https://your-shop.haszno.hu   # default: https://haszno-demo.vercel.app
+export HASZNO_API_URL=https://haszno.com   # alapértelmezett
 export HASZNO_API_KEY=your-api-key                  # Bearer token (preferred)
 # Silent fallback — the old names are also accepted:
 # export ARFUTAR_API_URL=...  export ARFUTAR_API_KEY=...
@@ -79,9 +79,9 @@ Or set env-based `npx` variant in `claude_desktop_config.json` / `.claude/settin
   "mcpServers": {
     "haszno": {
       "command": "npx",
-      "args": ["-y", "@haszno/mcp"],
+      "args": ["-y", "github:haszno-labs/haszno-mcp"],
       "env": {
-        "HASZNO_API_URL": "https://your-shop.haszno.hu",
+        "HASZNO_API_URL": "https://haszno.com",
         "HASZNO_API_KEY": "your-api-key"
       }
     }
@@ -94,7 +94,7 @@ Then use the `haszno_*` tools listed in `references/tools.md`.
 ### Via CLI (Codex / Cursor / shell)
 
 ```bash
-npm install -g @haszno/cli    # one-time global install
+npm install -g github:haszno-labs/haszno-cli    # one-time global install
 # OR run without install (after npm link in ~/.haszno/haszno-cli):
 haszno account stats --json
 haszno products list --all --json

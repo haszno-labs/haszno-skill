@@ -9,7 +9,7 @@ see `SKILL.md` and `references/tools.md`.
 ## Environment setup
 
 ```bash
-export HASZNO_API_URL=https://your-shop.haszno.hu   # defaults to demo if unset
+export HASZNO_API_URL=https://haszno.com   # default
 export HASZNO_API_KEY=your-api-key                  # Bearer token
 # Legacy fallback (also accepted silently):
 # export ARFUTAR_API_URL=...  export ARFUTAR_API_KEY=...
@@ -29,10 +29,10 @@ Never echo, log, or hard-code credentials. Read them from the environment only.
 curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh | bash
 
 # Or npm global install:
-npm install -g @haszno/cli
+npm install -g github:haszno-labs/haszno-cli
 
 # Or run without install (auto-fetches latest):
-npx @haszno/cli <command> [--json] [--api-url <url>] [--api-key <key>]
+npx -y github:haszno-labs/haszno-cli <command> [--json] [--api-url <url>] [--api-key <key>]
 ```
 
 Always pass `--json` in agent scripts. Human-readable output is for terminals only.
@@ -181,7 +181,7 @@ Or set env-based `npx` variant in `claude_desktop_config.json` / `.claude/settin
       "command": "node",
       "args": ["~/.haszno/haszno-mcp/dist/index.js"],
       "env": {
-        "HASZNO_API_URL": "https://your-shop.haszno.hu",
+        "HASZNO_API_URL": "https://haszno.com",
         "HASZNO_API_KEY": "your-api-key"
       }
     }

@@ -2,7 +2,7 @@
 
 Install / run:
 ```bash
-npm install -g @haszno/cli    # global install
+npm install -g github:haszno-labs/haszno-cli    # global install
 # OR install once via the shared installer:
 curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh | bash
 ```
