@@ -616,3 +616,116 @@ Each `BlogPost`: `id, slug, period, periodStart, periodEnd, title, summary, body
 
 `data` may include: `rankedCategories: [{category, score}]`, `rankedProducts: [{name, score}]`, `shopsCount`
 
+
+---
+
+## Napi piaci menedzser (`haszno_daily_report`, `haszno_research_brief`, `haszno_post_findings`, `haszno_list_actions`, `haszno_propose_action`, `haszno_withdraw_action`)
+
+Agent-facing endpoints under `/api/agent/`. All require a valid per-shop Bearer token (`haszno_...`).
+Write routes (`haszno_post_findings`, `haszno_propose_action`) require a write-scope token.
+Approve / undo / autopilot-write are intentionally NOT tools — they are human-only decisions made in the Haszno UI.
+
+---
+
+### `haszno_daily_report` _(read-only)_
+
+Get the shop's daily market report (latest or by date).
+
+**Parameters:**
+- `day` _(string, optional)_ — `"YYYY-MM-DD"` or `"latest"` (default). If `list: true`, this parameter is ignored.
+- `list` _(boolean, optional)_ — `true` returns `DailyReportSummary[]` (last 30 days); `false`/omitted returns the full `DailyReport`.
+
+**Returns:** `DailyReport` (or `DailyReportSummary[]` when `list: true`), or `{ report: null }` if no report exists for the given day.
+
+Each `DailyReport`: `{ id, day, headline, summary, items[], createdAt, updatedAt }`
+Each `ReportItem`: `{ id, origin ("rendszer"|"agent"), kind, title, body, changePct, keyword, productId, productName, sourceName, sourceUrl, suggestedAction, action }`
+
+**Note:** Approval and undo are always the shop owner's decision in the Haszno UI (`/app/napi-jelentes`).
+
+---
+
+### `haszno_research_brief` _(read-only)_
+
+Get today's research brief: shop focus products/keywords with prices and trend indicators, Hungarian research questions, and the endpoint URL to post findings to.
+
+**Parameters:** none
+
+**Returns:** `ResearchBrief { day, shopFocus[], questions[], postTo }`
+
+Each `ResearchBriefFocus`: `{ keyword, productId, name, priceGross, marketMinGross, trend ("emelkedo"|"stabil"|"csokkeno"|null) }`
+
+---
+
+### `haszno_post_findings` _(write — Bearer write scope required)_
+
+Post agent-side research findings to the daily report. Items appear as `origin: "agent"` in the report.
+
+**Parameters:**
+- `day` _(string, required)_ — `"YYYY-MM-DD"`. Only today or yesterday (UTC) accepted.
+- `headline` _(string, optional)_ — max 140 chars
+- `summary` _(string, optional)_ — max 800 chars
+- `items` _(array, required, 1–20)_ — `FindingInput[]`
+
+Each `FindingInput`:
+- `kind` _(required)_: `"ar_emelkedes" | "ar_csokkenes" | "trend" | "hir" | "keszlet" | "top_eladas" | "lehetoseg"`
+- `title` _(required)_: 5–140 chars
+- `body` _(required)_: 10–1200 chars plain text
+- `changePct` _(optional)_: percentage change (positive = increase)
+- `keyword` _(optional)_
+- `productId` _(optional)_: must belong to this shop
+- `sourceName` _(optional)_
+- `sourceUrl` _(optional)_: must be `http(s)://` if provided
+- `suggestedAction` _(optional)_: `ActionInput` (felvetel/levetel/ar/import) — approval always belongs to the owner
+
+**Returns:** Updated `DailyReport`.
+
+**Limits:** max 20 items per call, max 60 agent items per day.
+
+---
+
+### `haszno_list_actions` _(read-only)_
+
+List the shop's agent actions (proposed, executed, rejected, error).
+
+**Parameters:**
+- `status` _(optional)_: `"javasolt" | "vegrehajtva" | "elutasitva" | "hiba" | "visszavonva"`
+- `limit` _(integer 1–200, optional, default 50)_
+
+**Returns:** `{ actions: AgentAction[], count: number }` (newest first)
+
+Each `AgentAction`: `{ id, action, reason, status, origin, autoApproved, reportItemId, target { name, sku, imageUrl }, preview { oldPriceGross, newPriceGross, floorGross, marginPct }, error, canUndo, createdAt, decidedAt, executedAt }`
+
+**Note:** Approval and undo are always the shop owner's decision in the Haszno UI.
+
+---
+
+### `haszno_propose_action` _(write — Bearer write scope required)_
+
+Propose a new agent action for the shop owner to review. The action is NOT executed immediately — the owner approves it in the Haszno UI.
+
+Exception: if autopilot is enabled and the action type qualifies, the server may auto-execute it — check the response's `status` and `autoApproved` fields.
+
+**Parameters:**
+- `type` _(required)_: `"felvetel" | "levetel" | "ar" | "import"`
+- `productId` _(integer, required for felvetel/levetel/ar)_
+- `networkProductId` _(integer, required for import)_
+- `priceGross` _(positive number, required for ar)_ — server enforces the price floor
+- `reason` _(string, required)_: 5–500 chars — why this action is proposed
+- `reportItemId` _(integer, optional)_: link to a report item
+
+**Returns:** `AgentAction` — `status: "javasolt"` or `"vegrehajtva"` if autopilot ran it.
+
+**IMPORTANT:** The agent must not self-approve. Approval belongs to the owner in the Haszno UI.
+
+---
+
+### `haszno_withdraw_action` _(write — Bearer write scope required)_
+
+Withdraw (reject) an agent action proposal that was created by this agent/shop. Only the shop's own proposals can be withdrawn.
+
+**Parameters:**
+- `id` _(integer, required)_: the action ID to withdraw
+
+**Returns:** `AgentAction` — updated with `status: "visszavonva"`.
+
+**Note:** This calls `POST /api/agent/actions/:id/reject`. Only the action's own shop can withdraw it. Approve and undo remain the shop owner's decision in the Haszno UI.

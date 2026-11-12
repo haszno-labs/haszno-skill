@@ -256,17 +256,17 @@ profit impact. Ask the user which item to drill into.
 Goal: post agent-side market findings and action proposals to the daily report.
 
 ```
-1. haszno_manager_research_brief
+1. haszno_research_brief
    → day, shopFocus[], questions[], postTo
 
 2. For each question in questions[]:
    - Web search (public sources only — no other resellers' private data)
    - Verify every fact against its source URL before including it
 
-3. haszno_manager_post_findings(day, headline, summary, items[3–10])
+3. haszno_post_findings(day, headline, summary, items[3–10])
    → DailyReport (confirms items persisted with origin="agent")
 
-4. haszno_manager_propose_action(type, payload, reason, reportItemId) × ≤5
+4. haszno_propose_action(type, payload, reason, reportItemId) × ≤5
    → AgentAction { status: "javasolt" }
       (may be "vegrehajtva" if autopilot auto-ran it — check the response)
 
@@ -297,7 +297,7 @@ Full step-by-step: **[Recipe 9 in references/recipes.md](references/recipes.md)*
 | `connections` | `haszno_connections_list` | — |
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
-| `manager` | `haszno_manager_research_brief`, `haszno_manager_actions_list`, `haszno_manager_autopilot_get` | `haszno_manager_post_findings` (agent findings), `haszno_manager_propose_action` (propose only — no confirm flag; never self-approve) |
+| `manager` | `haszno_daily_report`, `haszno_research_brief`, `haszno_list_actions` | `haszno_post_findings` (agent findings), `haszno_propose_action` (propose only — no confirm flag; never self-approve), `haszno_withdraw_action` (withdraw own proposal) |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
 | `orders` | `list` | `ship`, `receive` |

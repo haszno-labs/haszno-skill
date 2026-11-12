@@ -494,7 +494,7 @@ A brífing megmondja, melyik termékekre / kulcsszavakra kell figyelni ma,
 
 **MCP:**
 ```
-haszno_manager_research_brief
+haszno_research_brief
 → ResearchBrief {
     day: "2026-11-12",
     shopFocus: [ { keyword, productId, name, priceGross, marketMinGross, trend } ],
@@ -505,7 +505,7 @@ haszno_manager_research_brief
 
 **CLI:**
 ```bash
-haszno manager research-brief --json
+haszno research brief --json
 # → day, shopFocus[], questions[], postTo
 ```
 
@@ -555,7 +555,7 @@ Minden megállapításhoz:
 
 **MCP:**
 ```
-haszno_manager_post_findings(
+haszno_post_findings(
   day="2026-11-12",
   headline="PS5 Pro ára emelkedett; új Switch 2 bundle piacon",
   summary="Három szórakoztatóipari termék árában volt elmozdulás. A PS5 Pro nagyon...",
@@ -587,7 +587,7 @@ haszno_manager_post_findings(
 **CLI:**
 ```bash
 # Írd a findings-okat egy JSON fájlba, majd küldd be:
-haszno manager post-findings --day 2026-11-12 --file /tmp/findings.json
+haszno research post --day 2026-11-12 /tmp/findings.json
 # A fájl struktúrája: { headline, summary, items: FindingInput[] }
 ```
 
@@ -611,7 +611,7 @@ cselekvés tartozik. Javasolj **legfeljebb 5** műveletet — a minőség fontos
 
 **MCP — egy javaslat beküldése:**
 ```
-haszno_manager_propose_action(
+haszno_propose_action(
   type="ar",
   productId=112,
   priceGross=206000,
@@ -625,12 +625,12 @@ haszno_manager_propose_action(
 
 **CLI:**
 ```bash
-haszno manager propose \
+haszno actions propose \
   --type ar \
   --product-id 112 \
-  --price-gross 206000 \
+  --price 206000 \
   --reason "A piaci minimum 208 490 Ft-ra emelkedett (Árukereső.hu, 2026-11-12)." \
-  --report-item-id 47
+  --report-item 47
 ```
 
 **Amit soha ne állíts:**
@@ -662,20 +662,21 @@ már `vegrehajtva` lesz — ezeket is tüntesd fel:
 
 | Eszköz | Leírás |
 |---|---|
-| `haszno_manager_research_brief` | Napi kutatási brífing lekérése (read-only) |
-| `haszno_manager_post_findings` | Agent-kutatás eredményeinek beküldése |
-| `haszno_manager_propose_action` | Művelet javaslása jóváhagyásra |
-| `haszno_manager_actions_list` | Függő / legutóbbi műveletek lekérése |
-| `haszno_manager_autopilot_get` | Autopilot beállítások lekérése (read-only) |
+| `haszno_daily_report` | Napi piaci jelentés lekérése (legutóbbi vagy adott napra, read-only) |
+| `haszno_research_brief` | Napi kutatási brífing lekérése (read-only) |
+| `haszno_post_findings` | Agent-kutatás eredményeinek beküldése |
+| `haszno_propose_action` | Művelet javaslása jóváhagyásra |
+| `haszno_withdraw_action` | Saját javaslat visszavonása |
+| `haszno_list_actions` | Függő / legutóbbi műveletek lekérése |
 
 ### Gyorsreferencia — CLI parancsok (manager domain)
 
 ```bash
-haszno manager research-brief --json        # kutatási brífing
-haszno manager post-findings --day DATE --file findings.json
-haszno manager propose --type TYPE --product-id N --price-gross P --reason "..."
-haszno manager actions --status javasolt --json
-haszno manager autopilot --json
+haszno report [--day DATE]                       # napi piaci jelentés
+haszno research brief --json                      # kutatási brífing
+haszno research post [--day DATE] <file.json>     # eredmények beküldése (- = stdin)
+haszno actions propose --type TYPE --product-id N --price <gross> --reason "..."
+haszno actions list [--status javasolt] [--limit 50] [--json]
 ```
 
 ---

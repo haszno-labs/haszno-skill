@@ -422,3 +422,108 @@ Show the latest market insight blog post(s).
 haszno blog latest [--period het|honap] [--limit <n>] [--json]
 ```
 
+
+---
+
+## Napi piaci menedzser (`haszno report`, `haszno research`, `haszno actions`)
+
+Agent-facing commands. All require a valid per-shop Bearer token (`HASZNO_API_KEY=haszno_...`).
+Write commands (`haszno research post`, `haszno actions propose`) require a write-scope token.
+Approve and undo are intentionally NOT available in the CLI — these are human decisions made in the Haszno UI at `/app/napi-jelentes`.
+
+---
+
+### `haszno report [--day YYYY-MM-DD]`
+
+Display the daily market report (latest by default).
+
+```bash
+haszno report [--day 2026-11-12] [--json]
+```
+
+- Without `--day`: fetches the most recent report (`GET /api/agent/daily-report`)
+- With `--day`: fetches the report for a specific day (`GET /api/agent/daily-report/:day`)
+
+**Returns:** Pretty-printed report with items grouped by kind; `--json` returns raw `DailyReport`.
+
+---
+
+### `haszno research brief`
+
+Display today's research brief: shop focus products/keywords, prices, trend indicators, and research questions.
+
+```bash
+haszno research brief [--json]
+```
+
+Calls `GET /api/agent/research-brief`. Returns `ResearchBrief { day, shopFocus[], questions[], postTo }`.
+
+---
+
+### `haszno research post [--day YYYY-MM-DD] <file.json | ->`
+
+Post agent research findings to the daily report. Items appear as `origin: "agent"`.
+
+```bash
+# From file:
+haszno research post --day 2026-11-12 /path/to/findings.json
+
+# From stdin:
+cat findings.json | haszno research post -
+
+# Without --day: defaults to today (UTC)
+haszno research post findings.json
+```
+
+The file must contain a valid `FindingsInput` JSON object: `{ headline?, summary?, items: FindingInput[] }`.
+
+Calls `POST /api/agent/daily-report/:day/findings`. Max 20 items per call; max 60 agent items per day.
+
+---
+
+### `haszno actions list [--status <s>] [--limit <n>]`
+
+List the shop's agent actions (newest first).
+
+```bash
+haszno actions list [--status javasolt|vegrehajtva|elutasitva|hiba|visszavonva] [--limit 50] [--json]
+```
+
+Calls `GET /api/agent/actions?status=&limit=`. Default limit: 50, max: 200.
+
+---
+
+### `haszno actions propose --type <t> --reason <text> [options]`
+
+Propose a new agent action for the shop owner to review.
+
+```bash
+# Propose a price change:
+haszno actions propose \
+  --type ar \
+  --product-id 112 \
+  --price 206000 \
+  --reason "A piaci minimum emelkedett (Árukereső.hu, 2026-11-12)." \
+  [--report-item 47]
+
+# Propose listing a product:
+haszno actions propose --type felvetel --product-id 55 --reason "Trendelő termék."
+
+# Propose removing a product:
+haszno actions propose --type levetel --product-id 33 --reason "Tartósan kifogyott."
+
+# Propose adding a network product to the import list:
+haszno actions propose --type import --network-product-id 999 --reason "Releváns kategória."
+```
+
+Options:
+- `--type` _(required)_: `felvetel | levetel | ar | import`
+- `--product-id <id>` _(required for felvetel, levetel, ar)_
+- `--network-product-id <id>` _(required for import)_
+- `--price <gross>` _(required for ar)_: bruttó ár forintban
+- `--reason <text>` _(required)_: 5–500 chars
+- `--report-item <id>` _(optional)_: link to a report item ID
+
+Calls `POST /api/agent/actions`. Returns the new `AgentAction`.
+
+**Note:** The proposed action is NOT executed immediately. Approval must happen in the Haszno UI at `/app/napi-jelentes`.
