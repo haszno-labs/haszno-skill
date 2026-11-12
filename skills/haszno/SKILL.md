@@ -3,16 +3,20 @@ name: haszno
 description: >
   Work with Haszno dropshipping data: query partner catalogue, review and approve
   price proposals, manage automation rules, check orders, find new product ideas,
-  connect webshops (bolt-bekötés), manage P2P peer partner invites, and read
-  aggregated market blog posts. Use when the user mentions Haszno, dropshipping
+  connect webshops (bolt-bekötés), manage P2P peer partner invites, read
+  aggregated market blog posts, run daily market research (napi piaci kutatás),
+  post agent findings to the daily report, propose and approve agent actions,
+  and manage autopilot settings. Use when the user mentions Haszno, dropshipping
   pricing, price proposals (árajánlat), automation rules (automatika), product
   margins, Árukereső feed, supplier catalogue, connecting a webshop (bekötés,
   WooCommerce, Shopify), import list (import lista), push products to shop
   (termékek kiküldése), partner invite (meghívó), peer link (partner kapcsolat),
-  or asks to run a daily dropshipping check. Also triggers on: approve proposals,
-  reject proposals, run rule, margin check, veszteséges termékek, árazás
-  automatizálás, partnerkatekógus, termékötlet, dropshipping ügynök,
-  bolt-bekötés, barát meghívása, beszállító katalógus, heti összefoglaló.
+  daily report (napi jelentés), agent actions (ügynök javaslat, jóváhagyás),
+  autopilot, or asks to run a daily dropshipping or market research check.
+  Also triggers on: approve proposals, reject proposals, run rule, margin check,
+  veszteséges termékek, árazás automatizálás, partnerkatekógus, termékötlet,
+  dropshipping ügynök, bolt-bekötés, barát meghívása, beszállító katalógus,
+  heti összefoglaló, napi kutatás, menedzser.
 triggers:
   - haszno
   - haszno.com
@@ -35,6 +39,15 @@ triggers:
   - partner kapcsolat
   - heti összefoglaló
   - havi összefoglaló
+  - napi jelentes
+  - napi kutatás
+  - piaci kutatás
+  - daily market research
+  - napi piaci jelentes
+  - agent javaslat
+  - jóváhagyás
+  - autopilot
+  - menedzser
 ---
 
 # Haszno agent skill
@@ -145,6 +158,13 @@ so `haszno login` (or setting `HASZNO_API_KEY`) once configures both.
 7. **Demo environment is read-mostly.** Read-only GETs against the demo URL are
    fine for smoke tests. Never POST writes to the demo unless the user explicitly
    asks and confirms this is intentional.
+8. **Agent actions are propose-only.** An agent (Bearer `haszno_…` token) may
+   call `POST /api/agent/actions` to propose an action, and `POST …/:id/reject`.
+   It may NOT call `/approve`, `/undo`, or `PUT /api/agent/autopilot` — these
+   return 403. The owner approves in the UI at `/app/napi-jelentes`.
+9. **Antitrust rule.** Every report item and action proposal must be computed
+   from THIS shop's own data plus publicly available market prices only. Never
+   use or expose another reseller's prices, costs, or rules — even indirectly.
 
 ---
 
@@ -231,6 +251,38 @@ Goal: surface the most important issues in one pass.
 Report a brief summary: overall health, pending proposals count, any stuck orders,
 profit impact. Ask the user which item to drill into.
 
+### 6 — Napi piaci kutatás (daily market research)
+
+Goal: post agent-side market findings and action proposals to the daily report.
+
+```
+1. haszno_manager_research_brief
+   → day, shopFocus[], questions[], postTo
+
+2. For each question in questions[]:
+   - Web search (public sources only — no other resellers' private data)
+   - Verify every fact against its source URL before including it
+
+3. haszno_manager_post_findings(day, headline, summary, items[3–10])
+   → DailyReport (confirms items persisted with origin="agent")
+
+4. haszno_manager_propose_action(type, payload, reason, reportItemId) × ≤5
+   → AgentAction { status: "javasolt" }
+      (may be "vegrehajtva" if autopilot auto-ran it — check the response)
+
+5. Tell the owner: N findings posted, M actions await approval at /app/napi-jelentes
+```
+
+**Agent rules for this workflow:**
+- Never fabricate source URLs or prices. If you cannot verify, omit the number.
+- Never say an action was "executed" unless the server returned `status: "vegrehajtva"`.
+- Never use another shop's prices, margins, or rules as an input or source.
+- POST `/api/agent/actions` only — `/approve`, `/undo`, and autopilot PUT are
+  blocked for API tokens (403). Approval is for humans.
+- An `'ar'` action is refused (400) if the product has no known cost — do not retry.
+
+Full step-by-step: **[Recipe 9 in references/recipes.md](references/recipes.md)**
+
 ---
 
 ## Domain → endpoint → package map
@@ -245,6 +297,7 @@ profit impact. Ask the user which item to drill into.
 | `connections` | `haszno_connections_list` | — |
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
+| `manager` | `haszno_manager_research_brief`, `haszno_manager_actions_list`, `haszno_manager_autopilot_get` | `haszno_manager_post_findings` (agent findings), `haszno_manager_propose_action` (propose only — no confirm flag; never self-approve) |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
 | `orders` | `list` | `ship`, `receive` |
