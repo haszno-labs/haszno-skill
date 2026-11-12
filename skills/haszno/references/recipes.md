@@ -471,3 +471,245 @@ Sikeres elfogadás után a `partnerbolt` shop eléri a szállító #42 katalógu
 
 Visszajelzés: `{ pushed: 3, failed: 0 }` → "3 termék sikeresen kiküldve a webshopba."
 
+---
+
+## Recipe 9: Napi piaci kutatás (daily market research)
+
+Ez a recept az ügynök-oldali napi kutatás teljes menetét írja le: a bolt adataiból
+generált kutatási brífingtől a megállapítások beküldéséig és a javasolt műveletek
+rögzítéséig. Az eredmény megjelenik a **Haszno Menedzser** (`/app/napi-jelentes`) oldalán.
+
+> **Mikor futtasd:** naponta egyszer (reggel), mielőtt a bolt tulajdonosa megnyitja
+> az appot. Futtatható ütemezőből (cron), Workflow eszközből, vagy a felhasználó
+> kérésére interaktívan.
+
+---
+
+### Az út lépései
+
+#### 1. lépés — Kutatási brífing lekérése
+
+A brífing megmondja, melyik termékekre / kulcsszavakra kell figyelni ma,
+és pontosan milyen kérdéseket vizsgáljon az ügynök.
+
+**MCP:**
+```
+haszno_research_brief
+→ ResearchBrief {
+    day: "2026-11-12",
+    shopFocus: [ { keyword, productId, name, priceGross, marketMinGross, trend } ],
+    questions: [ "Mennyi a PS5 Pro piaci minimumára ma?", ... ],
+    postTo: "/api/agent/daily-report/2026-11-12/findings"
+  }
+```
+
+**CLI:**
+```bash
+haszno research brief --json
+# → day, shopFocus[], questions[], postTo
+```
+
+Ha a `questions` lista üres, a brífing generálása még folyamatban lehet — várj
+60 másodpercet, majd kíséreld meg újra.
+
+---
+
+#### 2. lépés — Minden kérdés megválaszolása webes kereséssel
+
+Minden `questions[i]`-re:
+1. Végezz nyilvános webes keresést (pl. Google, árösszehasonlító oldalak,
+   gyártói sajtóközlemények, megbízható híroldalak).
+2. Nyisd meg a legmegbízhatóbb forrást, és **olvasd ki a konkrét értéket**
+   (ár, dátum, esemény neve). Ne becsülj; ha nem találsz számot, azt jelezd.
+3. Jegyezd meg a forrás nevét és URL-jét — ezek kötelezőek a beküldésnél.
+
+**Őrszabályok a kutatás alatt:**
+- Csak nyilvánosan elérhető árakat használj. Más viszonteladó bolt nem nyilvános
+  forrás (pl. egy másik Haszno-bolt belső adata soha nem forrás).
+- Ha egy ár bizonytalan (paywalled, régóta nem frissült), jelezd az `body`-ban,
+  és ne add hozzá `suggestedAction`-ként árazási javaslatot.
+- Soha ne fabrikálj forrás-URL-t. Ha nincs URL, hagyd ki a `sourceUrl` mezőt.
+
+---
+
+#### 3. lépés — Megállapítások összegyűjtése és ellenőrzése
+
+Összesen **3–10 megállapítást** készíts (nem többet, mint 20 egy kérésben).
+
+Minden megállapításhoz:
+- `kind`: az alábbiak egyike — `ar_emelkedes` / `ar_csokkenes` / `trend` / `hir` / `lehetoseg`
+- `title`: 5–140 karakter, magyarázó, tényszerű cím
+- `body`: 10–1200 karakter, konkrét tény + forrás összefoglaló
+- `sourceName` + `sourceUrl`: a forrás neve és ellenőrizhető URL-je (kötelező `hir` és `ar_*` típusnál)
+- `changePct`: ha az ár %-ban változott (pozitív = emelkedés, negatív = csökkenés)
+- `keyword` / `productId`: ha a bolt egyik termékéhez kapcsolódik
+
+**Ellenőrzés beküldés előtt:**
+- Minden `sourceUrl` valós, megnyitható HTTP(S) cím?
+- Egyetlen megállapítás sem tartalmaz más boltok árait vagy margóit?
+- Az árak a mai napra vonatkoznak (nem 3 hónaposak)?
+
+---
+
+#### 4. lépés — Megállapítások beküldése
+
+**MCP:**
+```
+haszno_post_findings(
+  day="2026-11-12",
+  headline="PS5 Pro ára emelkedett; új Switch 2 bundle piacon",
+  summary="Három szórakoztatóipari termék árában volt elmozdulás. A PS5 Pro nagyon...",
+  items=[
+    {
+      kind: "ar_emelkedes",
+      title: "PS5 Pro piaci minimum +4,2% az elmúlt héten",
+      body: "Az Árukereső.hu adatai szerint a PS5 Pro legolcsóbb ajánlata 199 990 Ft-ról 208 490 Ft-ra nőtt.",
+      changePct: 4.2,
+      keyword: "ps5 pro",
+      productId: 112,
+      sourceName: "Árukereső.hu",
+      sourceUrl: "https://www.arukereso.hu/...",
+      suggestedAction: { type: "ar", productId: 112, priceGross: 206000 }
+    },
+    {
+      kind: "hir",
+      title: "GTA VI megjelenési dátum megerősítve — konzolkereslet várható",
+      body: "A Rockstar Games bejelentette, hogy a GTA VI 2026 őszén jelenik meg PS5-re és Xbox Series X-re...",
+      sourceName: "Rockstar Games",
+      sourceUrl: "https://www.rockstargames.com/...",
+      suggestedAction: null
+    }
+  ]
+)
+→ DailyReport (a frissített napi jelentés)
+```
+
+**CLI:**
+```bash
+# Írd a findings-okat egy JSON fájlba, majd küldd be:
+haszno research post --day 2026-11-12 /tmp/findings.json
+# A fájl struktúrája: { headline, summary, items: FindingInput[] }
+```
+
+Sikeres beküldés után a válasz a teljes `DailyReport` objektum — ellenőrizd,
+hogy az `items` listájában megjelentek-e az új tételek (`origin: "agent"`).
+
+---
+
+#### 5. lépés — Műveletek javaslása (legfeljebb 5 db)
+
+Az 'agent' origin itemekből válaszd ki azokat, amelyekhez konkrét, indokolható
+cselekvés tartozik. Javasolj **legfeljebb 5** műveletet — a minőség fontosabb a mennyiségnél.
+
+**Elfogadható művelet típusok:**
+| Típus | Mikor javasolható |
+|---|---|
+| `ar` | A piaci minimum megváltozott, és az új ár ≥ abszolút árhatár (a szerver ellenőrzi). |
+| `felvetel` | A kutatás hasonló terméket talált a katalógusban, ami még nem szerepel a boltban. |
+| `levetel` | Egy termék tartósan kifogyott (`keszlet` jelzéssel a jelentésben). |
+| `import` | Hálózati termék megjelent, ami releváns a bolt fókuszára. |
+
+**MCP — egy javaslat beküldése:**
+```
+haszno_propose_action(
+  type="ar",
+  productId=112,
+  priceGross=206000,
+  reason="A piaci minimum 208 490 Ft-ra emelkedett (Árukereső.hu, 2026-11-12). Az új ár 206 000 Ft, ami megőrzi a versenyképességet.",
+  reportItemId=<az előző lépésből kapott item id>
+)
+→ AgentAction { id, status: "javasolt", autoApproved: false, ... }
+  VAGY ha az autopilot aktív és a feltételek teljesülnek:
+→ AgentAction { status: "vegrehajtva", autoApproved: true }
+```
+
+**CLI:**
+```bash
+haszno actions propose \
+  --type ar \
+  --product-id 112 \
+  --price 206000 \
+  --reason "A piaci minimum 208 490 Ft-ra emelkedett (Árukereső.hu, 2026-11-12)." \
+  --report-item 47
+```
+
+**Amit soha ne állíts:**
+- Ne mondd, hogy „végrehajtottam" — a szerver jelzi, ha autoApproved volt.
+- Ne ismételj duplikált javaslatot (a szerver 409-et ad vissza).
+- Ne javasolj `ar` műveletet, ha a termékhez nincs ismert beszerzési ár
+  (a szerver visszadobja 400-zal).
+
+---
+
+#### 6. lépés — Összefoglalás a tulajdonosnak
+
+A kutatás befejezésekor közöld röviden az eredményt, és irányítsd a tulajdonost
+a Napi jelentés oldalra:
+
+> "A napi kutatás kész. 7 megállapítást rögzítettem (3 áremelkedés, 2 hír,
+>  2 lehetőség). 4 műveletet javasoltam jóváhagyásra.
+>  Átnézheted és jóváhagyhatod őket itt: **[/app/napi-jelentes](/app/napi-jelentes)**"
+
+Ha az autopilot aktiválva van, az automatikusan végrehajtott műveletek státusza
+már `vegrehajtva` lesz — ezeket is tüntesd fel:
+
+> "Ebből 2 műveletet az autopilot már automatikusan végre is hajtott
+>  (mindkettő 10%-on belüli árkiigazítás volt). 2 javaslat vár a jóváhagyásodra."
+
+---
+
+### Gyorsreferencia — MCP eszközök (manager domain)
+
+| Eszköz | Leírás |
+|---|---|
+| `haszno_daily_report` | Napi piaci jelentés lekérése (legutóbbi vagy adott napra, read-only) |
+| `haszno_research_brief` | Napi kutatási brífing lekérése (read-only) |
+| `haszno_post_findings` | Agent-kutatás eredményeinek beküldése |
+| `haszno_propose_action` | Művelet javaslása jóváhagyásra |
+| `haszno_withdraw_action` | Saját javaslat visszavonása |
+| `haszno_list_actions` | Függő / legutóbbi műveletek lekérése |
+
+### Gyorsreferencia — CLI parancsok (manager domain)
+
+```bash
+haszno report [--day DATE]                       # napi piaci jelentés
+haszno research brief --json                      # kutatási brífing
+haszno research post [--day DATE] <file.json>     # eredmények beküldése (- = stdin)
+haszno actions propose --type TYPE --product-id N --price <gross> --reason "..."
+haszno actions list [--status javasolt] [--limit 50] [--json]
+```
+
+---
+
+### Teljes séma összefoglalója
+
+```
+GET  /api/agent/research-brief                        → ResearchBrief  (Bearer read)
+POST /api/agent/daily-report/:day/findings            → DailyReport    (Bearer write; body: FindingsInput)
+GET  /api/agent/daily-report                          → DailyReport|null (Bearer read; latest)
+GET  /api/agent/daily-report/:day                     → DailyReport    (Bearer read; 404 if none)
+POST /api/agent/actions                               → AgentAction    (Bearer write; body: ActionInput & { reason, reportItemId? })
+GET  /api/agent/actions?status=javasolt               → AgentAction[]  (Bearer read; shop-scoped)
+GET  /api/agent/autopilot                             → AutopilotSettings (Bearer read)
+```
+
+Az összes többi manager végpont (`/approve`, `/reject`, `/undo`, autopilot PUT)
+kizárólag az emberi UI-ból hívható — API token (Bearer `haszno_…`) esetén 403.
+
+> **Fontos (Bearer-hitelesítés és Vercel):** a `/api/agent/*` végpontokra érkező Bearer-kérések
+> átjutnak a külső Basic-auth kapun (lásd `vercel.ts` `isPublicPath`). A kezelők validálják a
+> per-bolt tokent (élő DB-keresés; visszavont/lejárt → 401). A `/api/daily-reports/*` útvonalak
+> Bearer esetén is a Basic-auth mögött maradnak — ezek a webes UI útvonalai.
+
+---
+
+### Veszélyek és elkerülésük
+
+| Veszély | Megoldás |
+|---|---|
+| Forrás nélküli ár a `body`-ban | Mindig add hozzá a `sourceName` + `sourceUrl` mezőt; ha nincs, ne szerepelje az árszám |
+| Végrehajtottnak hitt javaslat | Csak a szerver válaszának `status` mezőjére támaszkodj; ne feltételezd |
+| Másik bolt belső adata forrásként | Csak nyilvánosan elérhető, URL-lel igazolható adatokat használj |
+| Napi limit túllépése | Max 60 agent-item/nap és max 20 item/kérés — az újabbakat másnapra halaszd |
+| Árazási javaslat árhatár alatt | A szerver visszadobja 400-zal proposekor — ne ismételgesd; vedd figyelembe a `floorGross` értéket a previewból |
+
