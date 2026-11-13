@@ -68,12 +68,12 @@ List the top-level and sub-categories available for ad posting.
 Search active ads.
 
 **Flags:** `--category <key>`, `--subcategory <key>`, `--county <megye>`,
-`--min-price <Ft>`, `--max-price <Ft>`, `--condition <uj|ujszerű|hasznalt|hibas>`,
-`--reserved` (include reserved ads), `--page <n>`
+`--city <város>`, `--min-price <Ft>`, `--max-price <Ft>`,
+`--sort <newest|price_asc|price_desc>`, `--page <n>`
 
 ```bash
-haszno shop search "iPhone 14" --condition ujszerű --max-price 200000 --json \
-  | jq '.[] | {id, title, priceGross, reserved, county}'
+haszno shop search "iPhone 14" --max-price 200000 --json \
+  | jq '.[] | {id, title, priceGross, condition, county}'
 ```
 
 ---
@@ -87,8 +87,8 @@ when you have an accepted reservation for that ad.
 
 ### `haszno shop price-hint [--json]` _(read)_
 
-Get an AI price suggestion. **Flags:** `--title <str>`, `--category <key>`,
-`--description <text>`, `--condition <str>`. Always label the result as a suggestion.
+Get an AI price suggestion. **Flags:** `--category <key>`, `--subcategory <key>`.
+Always label the result as a suggestion.
 
 ---
 
@@ -103,15 +103,18 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 | `--subcategory <key>` | — | Subcategory |
 | `--price <Ft>` | yes | Asking price in HUF gross |
 | `--negotiable` | — | Mark price as negotiable |
-| `--condition <str>` | — | `uj` / `ujszerű` / `hasznalt` / `hibas` |
+| `--condition <állapot>` | yes | `uj` \| `ujszeru` \| `hasznalt` \| `serult` |
 | `--description <text>` | — | Free-text description |
-| `--county <megye>` | — | County (Pest, Győr-Moson-Sopron, …) |
-| `--city <varos>` | — | City / settlement |
+| `--county <megye>` | yes | County (Pest, Győr-Moson-Sopron, …) |
+| `--city <varos>` | yes | City / settlement |
 | `--attr key=value` | — | Category-specific attribute (repeatable) |
 | `--image <file>` | — | Attach image (repeatable, up to 10) |
-| `--contact-name <name>` | — | Contact name shown to buyer |
+| `--contact-name <name>` | yes | Contact name shown to buyer |
+| `--contact-email <email>` | yes | Contact e-mail address |
 | `--contact-phone <tel>` | — | Phone revealed to buyer only after acceptance |
 | `--show-phone` | — | Allow buyer to see phone after acceptance |
+| `--resellable` | — | Allow partner shops to list this ad in their webshops |
+| `--commission-pct <szám>` | — | Partner reseller commission % (default 0) |
 | `--from-photos` | — | AI-suggest title/description/category from `--image` files |
 | `--dry-run` | — | Preview only — does not call API |
 | `--yes` | required | Skip confirmation prompt |
@@ -119,11 +122,13 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 ```bash
 # Dry-run preview:
 haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --dry-run
+  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --dry-run
 
 # Actual post:
 haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --yes
+  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
 ```
 
 ---
@@ -170,9 +175,12 @@ List messages/inquiries received on your ads (seller view).
 
 ---
 
-### `haszno shop inquire <adId> --message <text>` _(write)_
+### `haszno shop inquire <adId> --name <név> --email <email> --message <text>` _(write)_
 
 Send a message to the seller of an ad. Prompts for confirmation.
+
+**Flags:** `--name <név>` (required), `--email <email>` (required),
+`--phone <telefon>` (optional), `--message <text>` (required)
 
 ---
 
@@ -240,7 +248,8 @@ Prompts for confirmation.
 
 (Seller) Mark a reservation as completed. Optionally record the final sale price.
 Side effect: ad status → `"eladva"`; all other open reservations for the ad →
-`"elutasítva"`. Prompts for confirmation.
+`"elutasítva"`. Prompts for confirmation. (Note: there is no `--yes` flag for this
+command — always prompts interactively.)
 
 ---
 

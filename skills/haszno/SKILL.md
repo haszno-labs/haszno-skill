@@ -299,12 +299,16 @@ after a reservation is accepted.
 ```
 fuggoben → elfogadva (accept) → teljesitve (complete)
 fuggoben → elutasitva (decline, or when ad sold/paused/deleted)
-elfogadva → elutasitva (when ad sold/paused/deleted, or heldUntil expires)
+elfogadva → elutasitva (when ad sold/paused/deleted)
+elfogadva → lejart (when the 48-hour hold expires without completion)
 fuggoben/elfogadva → visszavonva (cancel by buyer)
 ```
 
+Accepted reservations hold for **48 hours** from acceptance (server-set; not caller-configurable).
 `effectiveStatus` returns `"lejart"` at read time if status is `"elfogadva"` and
 `heldUntil` has passed — no DB write required for display.
+
+Contact details (phone, e-mail) become visible to the other party only after acceptance.
 
 ---
 

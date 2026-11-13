@@ -301,15 +301,16 @@ Goal: take one or more photos the user shares and post them as an ad on the Hasz
 ### MCP sequence
 
 ```
-1. haszno_shop_upload_image(content=<base64>, filename="photo1.jpg")
-   → { url: "https://...", imageId: "..." }
-   Repeat for each photo.
+1. haszno_shop_upload_image(base64=<base64>, mimeType="image/jpeg")
+   → { id: 7, url: "/api/shop/images/7" }
+   Repeat for each photo; collect both id and url from each result.
 
-2. haszno_shop_suggest_from_photos(imageUrls=[url1, url2, ...])
+2. haszno_shop_suggest_from_photos(imageIds=[7, 8, ...])
+   — pass the numeric id values from step 1 (1–3 IDs)
    → { title, description, category, subcategory, attrs, confidence }
    Show this draft to the user and ask: "Ez stimmel? Módosítani kell valamit?"
 
-3. haszno_shop_price_hint(title=..., category=..., condition=...)
+3. haszno_shop_price_hint(cat=<category from step 2>)
    → { suggestedPriceGross, rangeMin, rangeMax }
    Tell the user: "Az AI szerint a piaci ár kb. X–Y Ft, javasolt ár: Z Ft."
 
@@ -320,8 +321,10 @@ Goal: take one or more photos the user shares and post them as an ad on the Hasz
    haszno_shop_create_ad(
      title=..., category=..., subcategory=..., priceGross=...,
      condition=..., description=..., county=..., city=...,
-     attrs=..., imageUrls=[url1, url2],
+     attrs=..., images=["/api/shop/images/7", "/api/shop/images/8"],
+     contactName=<user's name>, contactEmail=<user's email>,
      contactPhone=<user's phone if provided>,
+     negotiable=false, showPhone=false, resellable=false, partnerCommissionPct=0,
      confirm=true
    )
    → { ad: { id, title, ... } }
@@ -336,7 +339,8 @@ haszno shop post --image photo1.jpg --image photo2.jpg --from-photos --dry-run
 # 2. After user reviews and tweaks:
 haszno shop post --image photo1.jpg --image photo2.jpg \
   --title "Ikea Billy könyvespolc" --category butor --price 8000 \
-  --condition hasznalt --county Budapest --city Óbuda --yes
+  --condition hasznalt --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
 ```
 
 ### What to tell the user
@@ -386,12 +390,16 @@ Ask the user for any missing attributes before drafting.
      condition="hasznalt",
      description=<user's text>,
      county=<user's county>,
+     city=<user's city>,
      attrs={ brand:"Toyota", model:"Corolla", year:2019,
              mileage_km:85000, fuel:"benzin",
              transmission:"manualis", body:"szedán",
              doors:5, color:"fehér" },
-     imageUrls=[...],
+     images=["/api/shop/images/7", "/api/shop/images/8"],
+     contactName=<user's name>,
+     contactEmail=<user's email>,
      contactPhone=<user's phone>,
+     negotiable=true, showPhone=true, resellable=false, partnerCommissionPct=0,
      confirm=true
    )
    → { ad: { id, title, ... } }
@@ -412,6 +420,7 @@ haszno shop post \
   --attr transmission=manualis --attr body=szedán \
   --attr doors=5 --attr color=fehér \
   --image car1.jpg --image car2.jpg \
+  --contact-name "Varga Péter" --contact-email "peter@example.com" \
   --contact-phone "+36301234567" --show-phone \
   --dry-run   # review first, then re-run with --yes
 ```
@@ -458,8 +467,8 @@ Goal: search for a specific item, compare offers, and send a reservation to the 
 ### CLI equivalent
 
 ```bash
-haszno shop search "iPhone 14 Pro" --condition ujszerű --max-price 250000 --json \
-  | jq '.[] | {id, title, priceGross, reserved, county}'
+haszno shop search "iPhone 14 Pro" --max-price 250000 --json \
+  | jq '.[] | {id, title, priceGross, condition, county}'
 
 haszno shop show 42
 
@@ -497,8 +506,8 @@ Goal: a seller checks new messages and reservation requests, then accepts or dec
    Határidő: nov. 20. 18:00. Megerősítesz?"
 
 5. After user confirms:
-   haszno_shop_respond_reservation(id=3, action="accept",
-                                    heldUntil="2026-11-20T18:00:00Z", confirm=true)
+   haszno_shop_respond_reservation(id=3, action="accept")
+   — the server automatically sets heldUntil to 48 hours from now
    → { reservation: { id:3, status:"elfogadva", heldUntil:... } }
 
 6. User says "decline #5":
