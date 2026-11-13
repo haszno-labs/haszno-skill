@@ -104,6 +104,7 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 | `--price <Ft>` | yes | Asking price in HUF gross |
 | `--negotiable` | — | Mark price as negotiable |
 | `--condition <állapot>` | yes | `uj` \| `ujszeru` \| `hasznalt` \| `serult` |
+| `--defects <text>` | cond. | Defect/damage description (required when condition is `hasznalt` or `serult`, min 10 chars) |
 | `--description <text>` | — | Free-text description |
 | `--county <megye>` | yes | County (Pest, Győr-Moson-Sopron, …) |
 | `--city <varos>` | yes | City / settlement |
@@ -121,13 +122,15 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 
 ```bash
 # Dry-run preview:
-haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+haszno shop post --title "Ikea Billy könyvespolc" --category otthon_butor \
+  --price 8000 --condition hasznalt --defects "Kisebb karcolás az oldalán, egyébként jó állapot." \
+  --county Budapest --city Óbuda \
   --contact-name "Kovács Anna" --contact-email "anna@example.com" --dry-run
 
 # Actual post:
-haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+haszno shop post --title "Ikea Billy könyvespolc" --category otthon_butor \
+  --price 8000 --condition hasznalt --defects "Kisebb karcolás az oldalán, egyébként jó állapot." \
+  --county Budapest --city Óbuda \
   --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
 ```
 
@@ -417,8 +420,9 @@ versions are used in the ad.
 
 ```bash
 haszno shop post --image product.jpg --remove-bg \
-  --title "Fehér konyhai szék" --category butor \
-  --price 5000 --condition hasznalt --county Budapest --city Óbuda \
+  --title "Fehér konyhai szék" --category otthon_butor \
+  --price 5000 --condition hasznalt --defects "Kisebb kopásnyomok a lábakon." \
+  --county Budapest --city Óbuda \
   --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
 ```
 
@@ -434,7 +438,9 @@ Post multiple ads from a CSV file or a folder of subdirectories.
 | Könyvtár | `<forrás>` is a directory (or `--from-photos`) | Each subdirectory = one ad; images are uploaded and AI fills in the metadata |
 
 **CSV column names** (must match exactly):
-`title, category, subcategory, price, negotiable, condition, description, county, city, contact_name, contact_phone, contact_email, show_phone, images`
+`title, category, subcategory, price, negotiable, condition, defects, description, county, city, contact_name, contact_phone, contact_email, show_phone, images`
+
+`defects` is required (min 10 chars) when `condition` is `hasznalt` or `serult`; leave the column empty for `uj`/`ujszeru`.
 
 | Flag | Description |
 |---|---|
@@ -458,6 +464,34 @@ haszno shop post-bulk ./photos --from-photos --yes
 ### `haszno shop delete <id>` _(write)_
 
 Permanently delete an ad. Irreversible. Prompts for confirmation.
+
+---
+
+## `haszno shop profile` — Seller profile (one-time setup)
+
+> **Required before the first ad.** A new account has no seller type set. The API returns
+> HTTP 409 on the first `haszno shop post` until `haszno shop profile seller-type` is called once.
+
+### `haszno shop profile show [--json]` _(read)_
+
+Show the current seller profile (sellerType, company info, declaredAt).
+
+### `haszno shop profile seller-type maganszemely` _(write)_
+
+Register as a private individual (magánszemély).
+
+```bash
+haszno shop profile seller-type maganszemely
+```
+
+### `haszno shop profile seller-type kereskedo --company-name <név> --company-address <cím> [--company-reg-number <szám>]` _(write)_
+
+Register as a business/trader (kereskedő). `--company-name` and `--company-address` are required.
+
+```bash
+haszno shop profile seller-type kereskedo \
+  --company-name "Példa Kft." --company-address "1234 Budapest, Példa u. 1."
+```
 
 ---
 

@@ -30,7 +30,7 @@ Search active ads.
 
 **Parameters:**
 - `q` _(string, optional)_ — free-text query
-- `cat` _(string, optional)_ — category key (e.g. `"jarmuvek"`, `"elektronika"`)
+- `cat` _(string, optional)_ — category key (e.g. `"auto"`, `"elektronika"`)
 - `sub` _(string, optional)_ — subcategory key
 - `county` _(string, optional)_ — Hungarian county name
 - `city` _(string, optional)_ — city name

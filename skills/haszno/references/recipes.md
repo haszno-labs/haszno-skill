@@ -298,6 +298,11 @@ Same as Recipe 4, steps 5–6.
 
 Goal: take one or more photos the user shares and post them as an ad on the Haszno Shop.
 
+> **Prerequisite — seller type (one-time):** A new account must call
+> `haszno_shop_set_seller_profile(sellerType="maganszemely")` (or `"kereskedo"` with company details)
+> before the first ad. The API returns HTTP 409 otherwise.
+> Check first with `haszno_shop_list_my_ads` — if the user already has ads, skip this step.
+
 ### MCP sequence
 
 ```
@@ -493,8 +498,7 @@ Goal: a seller checks new messages and reservation requests, then accepts or dec
 ```
 1. haszno_shop_list_inquiries
    → show each: adTitle, senderName, message, createdAt
-   (Inquiries are informational; there is no reply API — the buyer gets contact
-   details after acceptance; direct the user to reply via phone/email once accepted.)
+   Seller can reply with `haszno_shop_reply_inquiry(id=<id>, message='...')`; each inquiry allows at most one reply.
 
 2. haszno_shop_list_reservations(role="seller", status="fuggoben")
    → list pending reservation requests
