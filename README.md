@@ -78,6 +78,27 @@ claude mcp add haszno --scope user -- node ~/.haszno/haszno-mcp/dist/index.js
 
 ---
 
+## Haszno Shop — free marketplace
+
+The Haszno Shop is a free classified-ads marketplace. No plans, no fees.
+
+**Quick start:**
+
+```bash
+haszno login            # one-time — saves token for CLI + MCP
+haszno shop search "iPhone 14" --json         # find ads
+haszno shop post --title "Billy polc" --category butor --price 8000 \
+  --condition hasznalt --county Budapest --dry-run   # preview an ad
+```
+
+Keywords that load the Shop part of the skill: `hirdetés`, `foglalás`, `eladás`,
+`add fel`, `hirdesd meg`, `keress nekem`, `foglald le`, `sell this`, `post an ad`,
+`reserve this`.
+
+See `skills/haszno/references/recipes.md` Recipes 9–13 for step-by-step workflows.
+
+---
+
 ## Related repos
 
 These three repos together form the Haszno agent SDK:

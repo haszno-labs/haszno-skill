@@ -163,6 +163,40 @@ Workflow recipes:    skills/haszno/references/recipes.md
 
 ---
 
+## Haszno Shop (free marketplace)
+
+The Haszno Shop is a free classified-ads marketplace. No plans or fees for using it.
+
+**One-time login** (run in a terminal; configures both CLI and MCP):
+
+```bash
+haszno login    # prompts for e-mail + password; token saved to ~/.config/haszno
+```
+
+**Key safety rules for headless agents:**
+
+| Rule | Detail |
+|---|---|
+| **Show before posting** | Compose the full ad draft and confirm with the user before calling any write endpoint. |
+| **Reserving is not paying** | Never state or imply money changed hands via Haszno. |
+| **No invented data** | Don't invent attributes, prices, or photos — ask the user or use the AI suggestion tools and label results as suggestions. |
+| **Phone stays private** | Use `contactPhone` / `--contact-phone`, never put it in ad text. |
+
+**Common read operations:**
+
+```bash
+haszno shop search "bútor" --county Budapest --json
+haszno shop show 42 --json
+haszno shop my --json
+haszno shop reservations --as seller --json
+```
+
+Full shop command and tool reference: `skills/haszno/references/commands.md` §`haszno shop`
+and `skills/haszno/references/tools.md` §`haszno_shop_*`. Recipes: `references/recipes.md`
+Recipes 9–13.
+
+---
+
 ## MCP server configuration
 
 For Claude Desktop / Claude Code (not Codex/Cursor):

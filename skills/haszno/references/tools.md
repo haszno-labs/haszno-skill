@@ -1,8 +1,305 @@
 # Haszno MCP Tool Reference
 
 All tools are prefixed `haszno_`. Read-only tools can be called freely.
-Every write tool requires a `confirm: true` argument — the agent must not pass
-`true` until the user has acknowledged what will happen.
+Write tools that make significant or irreversible changes require `confirm: true` —
+those tools are marked explicitly below. For all other write tools the parameter is
+absent; the agent must still get explicit user confirmation before calling them.
+
+---
+
+## Shop / marketplace (`haszno_shop_*`)
+
+The Haszno Shop is a free P2C/P2P classified-ads marketplace. No plans, no fees for
+using the Shop. Golden rules: (a) show the user every draft before writing; (b) reserving
+is not paying — payment and handover are always between buyer and seller; (c) never invent
+attributes, prices, or photos; (d) never put phone/email in ad text — use `contactPhone`.
+
+---
+
+### `haszno_shop_list_categories` _(read-only)_
+
+List ad categories and subcategories with their `key` values (required for creating ads).
+
+**Returns:** `{ categories: [{ key, name, subcategories: [{key, name, requiredAttrs}] }] }`
+
+---
+
+### `haszno_shop_search_ads` _(read-only)_
+
+Search active ads.
+
+**Parameters:**
+- `q` _(string, optional)_ — free-text query
+- `cat` _(string, optional)_ — category key (e.g. `"jarmuvek"`, `"elektronika"`)
+- `sub` _(string, optional)_ — subcategory key
+- `county` _(string, optional)_ — Hungarian county name
+- `city` _(string, optional)_ — city name
+- `min` _(integer, optional)_ — minimum price in HUF gross
+- `max` _(integer, optional)_ — maximum price in HUF gross
+- `cond` _(`"uj" | "ujszeru" | "hasznalt" | "serult"`, optional)_ — product condition
+- `sort` _(`"uj" | "ar_nov" | "ar_csokk"`, optional)_ — `"uj"` = newest (default), `"ar_nov"` = price ascending, `"ar_csokk"` = price descending
+- `page` _(integer, optional, default 1)_
+
+**Returns:** array of `Ad` with `id, title, priceGross, negotiable, condition, county, city,
+image, status, reserved, createdAt`
+
+---
+
+### `haszno_shop_get_ad` _(read-only)_
+
+Full ad detail. Contact fields (`sellerPhone`, `sellerEmail`) are non-null only when
+you have an accepted/completed reservation for this ad.
+
+**Parameters:** `id` _(integer)_
+
+**Returns:** `Ad` with attrs, imageUrls, contactName, contactPhone (gated), contactEmail (gated), showPhone
+
+---
+
+### `haszno_shop_price_hint` _(read-only)_
+
+AI price suggestion based on active listings in the category. Label the result as a suggestion to the user.
+
+**Parameters:**
+- `cat` _(string)_ — category key from `haszno_shop_list_categories`
+- `sub` _(string, optional)_ — subcategory key to narrow the hint
+- `q` _(string, optional)_ — item description or keywords
+
+**Returns:** `{ suggestedPriceGross: number, rangeMin: number, rangeMax: number }`
+
+---
+
+### `haszno_shop_list_my_ads` _(read-only)_
+
+List the authenticated user's own ads (all statuses).
+
+**Returns:** array of `Ad`
+
+---
+
+### `haszno_shop_list_inquiries` _(read-only)_
+
+List messages/inquiries received on the user's ads.
+
+**Parameters:**
+- `adId` _(integer, optional)_ — filter by a specific ad ID
+- `limit` _(integer 1–200, optional, default 50)_ — page size
+- `offset` _(integer, optional, default 0)_ — number of items to skip
+
+**Returns:** `{ items: [{ id, adId, adTitle, senderName, message, createdAt }] }`
+
+---
+
+### `haszno_shop_list_favorites` _(read-only)_
+
+List the user's favorited ads.
+
+**Returns:** array of `Ad`
+
+---
+
+### `haszno_shop_list_reservations` _(read-only)_
+
+List reservations.
+
+**Parameters:**
+- `role` _(`"buyer"` (default) | `"seller"`)_
+- `status` _(string, optional)_ — e.g. `"fuggoben"`, `"elfogadva"`, `"teljesitve"`
+- `page` _(integer, optional, default 1)_
+
+**Returns:** `{ items: [Reservation] }`
+
+Each `Reservation`: `id, adId, ad{id,title,priceGross,image,status}, status, message,
+offerPriceGross, buyerName, buyerPhone (gated), buyerEmail (gated), sellerName,
+sellerPhone (gated), sellerEmail (gated), heldUntil, createdAt, updatedAt, decidedAt`
+
+Contact fields are non-null only when `status` is `"elfogadva"` or `"teljesitve"`.
+
+---
+
+### `haszno_shop_upload_image` _(write, non-destructive)_
+
+Upload an image file; returns a numeric `id` and a `url` to reference in subsequent calls.
+
+**Parameters (choose one input form):**
+- `filePath` _(string)_ — absolute local path to a JPEG, PNG, or WebP file (e.g. `/tmp/photo.jpg`). The tool rejects files whose extension or magic bytes are not in that set.
+- `base64` _(string)_ + `mimeType` _(`"image/jpeg" | "image/png" | "image/webp"`)_ — base-64 encoded image data (without the `data:` prefix) together with its MIME type.
+
+Maximum size: **700 KB**.
+
+**Returns:** `{ id: number, url: string }`
+
+- Pass `url` in the `images` array of `haszno_shop_create_ad` / `haszno_shop_update_ad`.
+- Pass `id` in the `imageIds` array of `haszno_shop_suggest_from_photos`.
+
+---
+
+### `haszno_shop_suggest_from_photos` _(read-only)_
+
+AI-suggest title, description, category, subcategory, and attributes from one to three
+uploaded images. Upload images first with `haszno_shop_upload_image` to get the numeric
+`id` of each. Always label the result as a suggestion — do not post without user review.
+
+**Parameters:**
+- `imageIds` _(integer[], 1–3)_ — numeric image IDs from `haszno_shop_upload_image`
+
+**Returns:** `{ title, description, category, subcategory, attrs: {key: value}, confidence }`
+
+---
+
+### `haszno_shop_create_ad` _(write — confirm required)_
+
+Post a new ad. Always show the full draft to the user and require an explicit yes.
+To preview before posting, use `haszno shop post --dry-run` on the CLI instead of this tool.
+
+**Parameters:**
+- `title` _(string, 5–120 chars)_
+- `category` _(string)_ — key from `haszno_shop_list_categories`
+- `subcategory` _(string, optional)_
+- `priceGross` _(integer | null)_ — HUF gross, or `null` for "price on request"
+- `negotiable` _(boolean)_
+- `condition` _(`"uj" | "ujszeru" | "hasznalt" | "serult"`)_ — required
+- `description` _(string, max 5000 chars)_
+- `county` _(string)_ — required; Hungarian county name from taxonomy
+- `city` _(string)_ — required
+- `attrs` _(object, optional)_ — category-specific key/value attributes
+- `images` _(string[], optional, max 10)_ — URL values from `haszno_shop_upload_image`
+- `contactName` _(string)_ — required; seller display name
+- `contactEmail` _(string)_ — required; seller e-mail address
+- `contactPhone` _(string, optional)_ — revealed only after acceptance
+- `showPhone` _(boolean)_ — allow buyer to see phone after acceptance
+- `resellable` _(boolean)_ — allow partner shops to list this ad
+- `partnerCommissionPct` _(number, 0–30)_ — commission % for partner shops
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ ad: Ad }`
+
+---
+
+### `haszno_shop_update_ad` _(write — confirm required)_
+
+Edit an existing ad. This tool fetches the current ad values, merges in only the fields
+you provide, then sends the full updated body. Pass only the fields you want to change.
+Does not require `confirm` — always get explicit user confirmation before calling.
+
+**Parameters:** `id` _(integer)_, any subset of `haszno_shop_create_ad` fields
+(except `confirm` — that field is absent)
+
+**Returns:** `{ ad: Ad }`
+
+---
+
+### `haszno_shop_set_ad_status` _(write — confirm required)_
+
+Pause, re-activate, or permanently delete an ad. Does not require `confirm` —
+always get explicit user confirmation before calling, especially for `"torolve"` (irreversible).
+
+**Parameters:**
+- `id` _(integer)_
+- `status` _(`"aktiv" | "szunetel" | "torolve"`)_ — `"aktiv"` to show, `"szunetel"` to pause, `"torolve"` to permanently delete
+
+---
+
+### `haszno_shop_mark_sold` _(write — confirm required)_
+
+Mark an ad as sold.
+
+**Parameters:**
+- `id` _(integer)_
+- `soldPriceGross` _(integer, optional)_ — final sale price
+- `confirm` _(boolean, must be `true`)_
+
+---
+
+### `haszno_shop_renew_ad` _(write — confirm required)_
+
+Bump an ad to the top of search results. Does not require `confirm`.
+
+**Parameters:** `id` _(integer)_
+
+---
+
+### `haszno_shop_send_inquiry` _(write — confirm required)_
+
+Send a message to the seller of an ad. Does not require `confirm`.
+
+**Parameters:**
+- `adId` _(integer)_
+- `name` _(string, max 80 chars)_ — your name
+- `email` _(string)_ — your e-mail address
+- `phone` _(string, optional)_ — your phone number
+- `message` _(string, min 5, max 2000 chars)_
+
+---
+
+### `haszno_shop_set_favorite` _(write, non-destructive)_
+
+Add or remove an ad from favorites.
+
+**Parameters:**
+- `adId` _(integer)_
+- `save` _(boolean)_ — `true` = add to favourites, `false` = remove
+
+---
+
+### `haszno_shop_reserve_ad` _(write — confirm required)_
+
+Reserve an ad (send a reservation request to the seller).
+
+**Reserving is not paying.** Payment and handover happen directly between buyer and
+seller. Never state or imply that money changed hands via Haszno.
+
+**Parameters:**
+- `adId` _(integer)_
+- `message` _(string, optional)_ — note to seller, max 1 000 chars
+- `offerPriceGross` _(integer, optional)_ — counter-offer in HUF gross
+- `phone` _(string, optional)_ — buyer's phone, revealed to seller only on acceptance
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ reservation: Reservation }`
+
+Errors: 409 if an open reservation already exists for this ad.
+
+---
+
+### `haszno_shop_respond_reservation` _(write — confirm required)_
+
+(Seller) Accept or decline a pending reservation. Does not require `confirm`.
+When accepting, the server automatically sets the hold deadline to 48 hours from now.
+
+**Parameters:**
+- `id` _(integer)_ — reservation id
+- `action` _(`"accept" | "decline"`)_
+
+**Returns:** `{ reservation: Reservation }`
+
+Errors: 400 if status is not `"fuggoben"`; 409 on accept if another accepted reservation exists.
+
+---
+
+### `haszno_shop_cancel_reservation` _(write — confirm required)_
+
+(Buyer) Cancel your own reservation. Does not require `confirm`.
+
+**Parameters:** `id` _(integer)_
+
+**Returns:** `{ reservation: Reservation }`
+
+---
+
+### `haszno_shop_complete_reservation` _(write — confirm required)_
+
+(Seller) Complete a reservation and mark the transaction as done.
+
+**Parameters:**
+- `id` _(integer)_
+- `soldPriceGross` _(integer, optional)_ — final sale price
+- `confirm` _(boolean, must be `true`)_
+
+**Returns:** `{ reservation: Reservation, status: "teljesitve" }`
+
+Side effects: ad status → `"eladva"`; all other open reservations for the ad →
+`"elutasítva"`.
 
 ---
 

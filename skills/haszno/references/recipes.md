@@ -292,6 +292,291 @@ Same as Recipe 4, steps 5–6.
 
 ---
 
+---
+
+## Recipe 9: Sell something from photos in under a minute
+
+Goal: take one or more photos the user shares and post them as an ad on the Haszno Shop.
+
+### MCP sequence
+
+```
+1. haszno_shop_upload_image(base64=<base64>, mimeType="image/jpeg")
+   → { id: 7, url: "/api/shop/images/7" }
+   Repeat for each photo; collect both id and url from each result.
+
+2. haszno_shop_suggest_from_photos(imageIds=[7, 8, ...])
+   — pass the numeric id values from step 1 (1–3 IDs)
+   → { title, description, category, subcategory, attrs, confidence }
+   Show this draft to the user and ask: "Ez stimmel? Módosítani kell valamit?"
+
+3. haszno_shop_price_hint(cat=<category from step 2>)
+   → { suggestedPriceGross, rangeMin, rangeMax }
+   Tell the user: "Az AI szerint a piaci ár kb. X–Y Ft, javasolt ár: Z Ft."
+
+4. Show the draft to the user (title, price, category, description, images).
+   Ask: "Feladhatom?"
+
+5. After user says yes:
+   haszno_shop_create_ad(
+     title=..., category=..., subcategory=..., priceGross=...,
+     condition=..., description=..., county=..., city=...,
+     attrs=..., images=["/api/shop/images/7", "/api/shop/images/8"],
+     contactName=<user's name>, contactEmail=<user's email>,
+     contactPhone=<user's phone if provided>,
+     negotiable=false, showPhone=false, resellable=false, partnerCommissionPct=0,
+     confirm=true
+   )
+   → { ad: { id, title, ... } }
+```
+
+### CLI equivalent
+
+```bash
+# 1. Upload + suggest from photos:
+haszno shop post --image photo1.jpg --image photo2.jpg --from-photos --dry-run
+
+# 2. After user reviews and tweaks:
+haszno shop post --image photo1.jpg --image photo2.jpg \
+  --title "Ikea Billy könyvespolc" --category butor --price 8000 \
+  --condition hasznalt --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
+```
+
+### What to tell the user
+
+> "Az AI az alapján, amit a képeken lát, ezt a hirdetésvázlatot javasolja: [draft].
+>  A becsült piaci ár kb. 6 000–10 000 Ft. Módosítasz valamit, vagy feladhatom így?"
+
+After posting: "Feladva! Hirdetés ID: #123 — itt éred el: haszno.com/shop/123"
+
+---
+
+## Recipe 10: Sell a car
+
+Car ads require specific attributes. Missing required attributes block posting — always
+collect them before calling the API.
+
+### Required attributes for category `auto`
+
+| Attribute key | Values / format | Example |
+|---|---|---|
+| `brand` | string (make) | `Toyota` |
+| `model` | string | `Corolla` |
+| `year` | integer | `2019` |
+| `mileage_km` | integer | `85000` |
+| `fuel` | `benzin` / `diesel` / `elektromos` / `hibrid` / `lpg` | `benzin` |
+| `transmission` | `manualis` / `automata` | `manualis` |
+| `body` | `szedán` / `kombi` / `suv` / `ferdehátú` / `coupe` / `cabrio` / `egyterű` | `szedán` |
+| `doors` | integer | `5` |
+| `color` | string | `fehér` |
+| `condition` | `uj` / `ujszerű` / `hasznalt` / `hibas` | `hasznalt` |
+
+Ask the user for any missing attributes before drafting.
+
+### MCP sequence
+
+```
+1. Collect attrs from user (brand, model, year, mileage_km, fuel, transmission, body, doors, color)
+
+2. haszno_shop_price_hint(title="Toyota Corolla 2019", category="auto",
+                          condition="hasznalt")
+   → suggest a price range
+
+3. haszno_shop_create_ad(
+     title="Toyota Corolla 2019 1.6 benzin — 85 000 km",
+     category="auto",
+     priceGross=3200000,
+     condition="hasznalt",
+     description=<user's text>,
+     county=<user's county>,
+     city=<user's city>,
+     attrs={ brand:"Toyota", model:"Corolla", year:2019,
+             mileage_km:85000, fuel:"benzin",
+             transmission:"manualis", body:"szedán",
+             doors:5, color:"fehér" },
+     images=["/api/shop/images/7", "/api/shop/images/8"],
+     contactName=<user's name>,
+     contactEmail=<user's email>,
+     contactPhone=<user's phone>,
+     negotiable=true, showPhone=true, resellable=false, partnerCommissionPct=0,
+     confirm=true
+   )
+   → { ad: { id, title, ... } }
+
+   Before calling, show the draft (title, price, category, attrs) and ask: "Feladhatom?"
+   Call only after user confirms.
+```
+
+### CLI equivalent
+
+```bash
+haszno shop post \
+  --title "Toyota Corolla 2019 1.6 benzin — 85 000 km" \
+  --category auto --price 3200000 --condition hasznalt \
+  --county "Győr-Moson-Sopron" --city Győr \
+  --attr brand=Toyota --attr model=Corolla --attr year=2019 \
+  --attr mileage_km=85000 --attr fuel=benzin \
+  --attr transmission=manualis --attr body=szedán \
+  --attr doors=5 --attr color=fehér \
+  --image car1.jpg --image car2.jpg \
+  --contact-name "Varga Péter" --contact-email "peter@example.com" \
+  --contact-phone "+36301234567" --show-phone \
+  --dry-run   # review first, then re-run with --yes
+```
+
+### What to tell the user
+
+> "A hirdetésvázlat kész. Az autó piaci ára kb. 3,0–3,5 M Ft. Feladhatom?"
+
+---
+
+## Recipe 11: Find the best offer and reserve it
+
+Goal: search for a specific item, compare offers, and send a reservation to the seller.
+
+### MCP sequence
+
+```
+1. haszno_shop_search_ads(q="iPhone 14 Pro", condition="ujszerű",
+                           maxPrice=250000)
+   → list of ads; show to user: id, title, priceGross, reserved, county
+
+2. User picks an ad (or asks to see details):
+   haszno_shop_get_ad(id=<chosen id>)
+   → show title, description, attrs, images, priceGross, county, city,
+     negotiable, contactName (seller's display name)
+   Note: sellerPhone/sellerEmail are not shown until reservation is accepted.
+
+3. User says "reserve it":
+   Show the user a summary: "Ezt a foglalási kérelmet küldöm el az eladónak:
+   [message, offerPriceGross if set]. Megerősítesz? (A foglalás NEM fizetés —
+   az eladóval közvetlenül egyeztek meg a fizetésről és az átadásról.)"
+
+4. After user confirms:
+   haszno_shop_reserve_ad(
+     adId=<id>,
+     message="Délután 5 után tudok átmenni.",
+     offerPriceGross=220000,  # optional counter-offer
+     phone="+36201234567",    # optional, only if user explicitly provides it
+     confirm=true
+   )
+   → { reservation: { id, status:"fuggoben", ... } }
+```
+
+### CLI equivalent
+
+```bash
+haszno shop search "iPhone 14 Pro" --max-price 250000 --json \
+  | jq '.[] | {id, title, priceGross, condition, county}'
+
+haszno shop show 42
+
+haszno shop reserve 42 --message "Délután 5 után tudok átmenni." --offer 220000 --yes
+```
+
+### What to tell the user
+
+> "Foglalási kérelem elküldve (#7). Az eladó értesítést kap, és elfogadhatja vagy
+>  visszautasíthatja. Ha elfogadja, megkapod az elérhetőségeit.
+>  Emlékeztető: a fizetés és az átadás közvetlenül köztetek zajlik, a Haszno nem
+>  közvetíti a pénzt."
+
+---
+
+## Recipe 12: Handle incoming inquiries and reservations as a seller
+
+Goal: a seller checks new messages and reservation requests, then accepts or declines them.
+
+### MCP sequence
+
+```
+1. haszno_shop_list_inquiries
+   → show each: adTitle, senderName, message, createdAt
+   (Inquiries are informational; there is no reply API — the buyer gets contact
+   details after acceptance; direct the user to reply via phone/email once accepted.)
+
+2. haszno_shop_list_reservations(role="seller", status="fuggoben")
+   → list pending reservation requests
+
+3. For each reservation, show: ad.title, buyerName, message, offerPriceGross, createdAt
+
+4. User says "accept #3":
+   Tell user: "Elfogadom a foglalást — a vevő megkapja az elérhetőségeidet.
+   Határidő: nov. 20. 18:00. Megerősítesz?"
+
+5. After user confirms:
+   haszno_shop_respond_reservation(id=3, action="accept")
+   — the server automatically sets heldUntil to 48 hours from now
+   → { reservation: { id:3, status:"elfogadva", heldUntil:... } }
+
+6. User says "decline #5":
+   haszno_shop_respond_reservation(id=5, action="decline", confirm=true)
+
+7. After handover — mark complete:
+   haszno_shop_complete_reservation(id=3, soldPriceGross=220000, confirm=true)
+   → ad status becomes "eladva"; other open reservations → "elutasítva"
+```
+
+### CLI equivalent
+
+```bash
+haszno shop inquiries --json
+
+haszno shop reservations --as seller --json | jq '.[] | select(.status=="fuggoben")'
+
+haszno shop reservation accept 3 --held-until "2026-11-20T18:00:00Z"
+
+haszno shop reservation decline 5
+
+haszno shop reservation complete 3 --price 220000
+```
+
+### What to tell the user
+
+After `accept`: "Elfogadva. A vevő megkapta az elérhetőségeidet. Miután átadtad,
+jelöld teljesítettnek."
+
+After `complete`: "Teljesítve. A hirdetés 'eladva' státuszba került, az összes többi
+foglalást automatikusan visszautasítottuk."
+
+---
+
+## Recipe 13: Lower the price / renew / mark sold
+
+Three common post-publishing tasks.
+
+### Lower the price
+
+```
+MCP:  haszno_shop_update_ad(id=<id>, priceGross=<new_price>, confirm=true)
+CLI:  haszno shop edit <id> --price <new_price> --yes
+```
+
+### Renew (bump to top)
+
+```
+MCP:  haszno_shop_renew_ad(id=<id>, confirm=true)
+CLI:  haszno shop renew <id>
+```
+
+### Mark sold (without a Haszno reservation)
+
+```
+MCP:  haszno_shop_mark_sold(id=<id>, soldPriceGross=<Ft or omit>, confirm=true)
+CLI:  haszno shop sold <id> [--price <Ft>]
+```
+
+### What to tell the user
+
+Lower price: "Ár módosítva: [old] Ft → [new] Ft."
+
+Renew: "Hirdetés megújítva — visszakerült az elejére."
+
+Mark sold: "Hirdetés 'eladva' státuszba állítva."
+
+---
+
 ## Jq cheatsheet for CLI pipelines
 
 ```bash

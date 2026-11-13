@@ -4,15 +4,20 @@ description: >
   Work with Haszno dropshipping data: query partner catalogue, review and approve
   price proposals, manage automation rules, check orders, find new product ideas,
   connect webshops (bolt-bekötés), manage P2P peer partner invites, and read
-  aggregated market blog posts. Use when the user mentions Haszno, dropshipping
-  pricing, price proposals (árajánlat), automation rules (automatika), product
-  margins, Árukereső feed, supplier catalogue, connecting a webshop (bekötés,
-  WooCommerce, Shopify), import list (import lista), push products to shop
-  (termékek kiküldése), partner invite (meghívó), peer link (partner kapcsolat),
-  or asks to run a daily dropshipping check. Also triggers on: approve proposals,
-  reject proposals, run rule, margin check, veszteséges termékek, árazás
-  automatizálás, partnerkatekógus, termékötlet, dropshipping ügynök,
-  bolt-bekötés, barát meghívása, beszállító katalógus, heti összefoglaló.
+  aggregated market blog posts. Also covers the Haszno Shop free marketplace:
+  post ads, search and reserve items, manage incoming reservations and inquiries.
+  Use when the user mentions Haszno, dropshipping pricing, price proposals
+  (árajánlat), automation rules (automatika), product margins, Árukereső feed,
+  supplier catalogue, connecting a webshop (bekötés, WooCommerce, Shopify),
+  import list (import lista), push products to shop (termékek kiküldése),
+  partner invite (meghívó), peer link (partner kapcsolat), or asks to run a
+  daily dropshipping check. Also triggers on: sell this, post an ad, list my
+  item on Haszno, find me a used … on Haszno, reserve/buy this, ad posting,
+  hirdetés feladása, add fel Hasznóra, hirdesd meg, keress nekem, foglald le,
+  vedd meg, approve proposals, reject proposals, run rule, margin check,
+  veszteséges termékek, árazás automatizálás, partnerkatekógus, termékötlet,
+  dropshipping ügynök, bolt-bekötés, barát meghívása, beszállító katalógus,
+  heti összefoglaló.
 triggers:
   - haszno
   - haszno.com
@@ -35,6 +40,19 @@ triggers:
   - partner kapcsolat
   - heti összefoglaló
   - havi összefoglaló
+  - hirdetés
+  - foglalás
+  - eladás
+  - add fel
+  - hirdesd meg
+  - keress nekem
+  - foglald le
+  - vedd meg
+  - sell this
+  - post an ad
+  - reserve this
+  - haszno shop
+  - marketplace
 ---
 
 # Haszno agent skill
@@ -233,6 +251,67 @@ profit impact. Ask the user which item to drill into.
 
 ---
 
+## Haszno Shop (free marketplace)
+
+The Haszno Shop is a free P2C/P2P classified-ads marketplace built into Haszno.
+There are no plans or paid tiers for using the Shop.
+
+### CLI vs MCP
+
+| Surface | Prefer |
+|---|---|
+| Interactive Claude Desktop / Claude Code (MCP connected) | **MCP** (`haszno_shop_*` tools) |
+| Shell script, cron, Codex, Cursor | **CLI** (`haszno shop <cmd>`) |
+
+### One-time login
+
+```bash
+haszno login          # prompts for e-mail + password, saves token to ~/.config/haszno
+```
+
+After that both CLI and MCP share the same token automatically — no further setup.
+
+### Golden rules
+
+**(a) The Shop is completely free.** Never mention prices, plans, or subscription tiers
+when talking about using the Shop.
+
+**(b) Posting an ad, sending an inquiry, and reserving are real, visible actions.**
+Always compose the full draft and show it to the user; get an explicit "yes" before
+calling any write endpoint. Use `--dry-run` (CLI) or omit `confirm: true` (MCP) to
+preview first.
+
+**(c) Reserving is not paying.** A reservation is a buyer signalling intent; payment
+and handover happen directly between buyer and seller outside Haszno. Never state or
+imply that money changed hands via the platform.
+
+**(d) Never invent attributes, prices, or photos.** Ask the user for missing required
+attributes. Use `haszno shop price-hint` / `haszno_shop_price_hint` for a price
+suggestion, and label it as a suggestion. Use `--from-photos` / `haszno_shop_suggest_from_photos`
+for AI-generated draft text, and label that as a suggestion too.
+
+**(e) Never put the user's phone number or e-mail into the ad text.** Use the dedicated
+`--contact-phone` / `contactPhone` field, which is revealed to the other party only
+after a reservation is accepted.
+
+### Status state machine (reservations)
+
+```
+fuggoben → elfogadva (accept) → teljesitve (complete)
+fuggoben → elutasitva (decline, or when ad sold/paused/deleted)
+elfogadva → elutasitva (when ad sold/paused/deleted)
+elfogadva → lejart (when the 48-hour hold expires without completion)
+fuggoben/elfogadva → visszavonva (cancel by buyer)
+```
+
+Accepted reservations hold for **48 hours** from acceptance (server-set; not caller-configurable).
+`effectiveStatus` returns `"lejart"` at read time if status is `"elfogadva"` and
+`heldUntil` has passed — no DB write required for display.
+
+Contact details (phone, e-mail) become visible to the other party only after acceptance.
+
+---
+
 ## Domain → endpoint → package map
 
 | Domain | Key read operations | Key write operations |
@@ -245,6 +324,7 @@ profit impact. Ask the user which item to drill into.
 | `connections` | `haszno_connections_list` | — |
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
+| `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation` |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
 | `orders` | `list` | `ship`, `receive` |

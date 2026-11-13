@@ -78,6 +78,27 @@ Az `install.sh` ezt automatikusan elvégzi, ha a `claude` parancs elérhető.
 
 ---
 
+## Haszno Shop — ingyenes piactér
+
+A Haszno Shop egy ingyenes apróhirdetési piactér. Nincs csomag, nincs díj.
+
+**Gyors start:**
+
+```bash
+haszno login            # egyszeri — CLI + MCP közös token
+haszno shop search "iPhone 14" --json              # hirdetések keresése
+haszno shop post --title "Billy polc" --category butor --price 8000 \
+  --condition hasznalt --county Budapest --dry-run  # hirdetésvázlat előnézet
+```
+
+A skillt aktiváló kulcsszavak: `hirdetés`, `foglalás`, `eladás`, `add fel`,
+`hirdesd meg`, `keress nekem`, `foglald le`, `sell this`, `post an ad`, `reserve this`.
+
+A lépésenkénti munkafolyamatokért lásd `skills/haszno/references/recipes.md`
+9–13. receptjeit.
+
+---
+
 ## Kapcsolódó repók
 
 Ez a három repó együtt alkotja a Haszno agent SDK-t:
