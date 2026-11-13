@@ -78,7 +78,7 @@ claude mcp add haszno --scope user -- node ~/.haszno/haszno-mcp/dist/index.js
 
 ---
 
-## Haszno Shop — free marketplace
+## Haszno Shop — free marketplace (v0.3.0)
 
 The Haszno Shop is a free classified-ads marketplace. No plans, no fees.
 
@@ -91,11 +91,30 @@ haszno shop post --title "Billy polc" --category butor --price 8000 \
   --condition hasznalt --county Budapest --dry-run   # preview an ad
 ```
 
-Keywords that load the Shop part of the skill: `hirdetés`, `foglalás`, `eladás`,
-`add fel`, `hirdesd meg`, `keress nekem`, `foglald le`, `sell this`, `post an ad`,
-`reserve this`.
+**v0.3.0 — New Shop features:**
 
-See `skills/haszno/references/recipes.md` Recipes 9–13 for step-by-step workflows.
+| Feature | CLI | MCP |
+|---|---|---|
+| Price negotiation / counter-offer | `haszno shop reservation counter <id> --price <Ft>` | `haszno_shop_counter_offer` |
+| Accept seller's counter-offer | `haszno shop reservation accept-counter <id>` | `haszno_shop_accept_counter` |
+| Reservation messaging | `haszno shop reservation messages/message <id>` | `haszno_shop_list_messages` / `haszno_shop_send_message` |
+| Leave a review | `haszno shop reservation review <id> --rating 1-5` | `haszno_shop_review` |
+| Reply to inquiry | `haszno shop inquiry reply <id> --message ...` | `haszno_shop_reply_inquiry` |
+| Saved searches + e-mail alerts | `haszno shop saved-search add/list/remove` | `haszno_shop_save_search` / `haszno_shop_list_saved_searches` / `haszno_shop_delete_saved_search` |
+| Price-drop watch | `haszno shop watch/unwatch <adId>` | `haszno_shop_watch_price` |
+| Import from external URL | `haszno shop import-url <url> [--post]` | `haszno_shop_import_from_url` |
+| Ad creation draft (server-side) | `haszno shop draft show/save/clear` | `haszno_shop_get_draft` / `haszno_shop_save_draft` / `haszno_shop_clear_draft` |
+| Bulk posting (CSV or photo folder) | `haszno shop post-bulk <src> [--from-photos] [--dry-run] [--yes]` | — |
+| AI background removal | `haszno shop post --remove-bg` | `haszno_shop_remove_background` |
+| Delete ad | `haszno shop delete <id>` | _(use `haszno_shop_set_ad_status`)_ |
+| Session token management | `haszno tokens list/revoke` / `haszno logout` | — |
+
+Keywords that load the Shop part of the skill: `hirdetés`, `foglalás`, `eladás`,
+`alku`, `ellenajánlat`, `értékelés`, `mentett keresés`, `árfigyelés`,
+`add fel`, `hirdesd meg`, `keress nekem`, `foglald le`, `sell this`, `post an ad`,
+`reserve this`, `import-url`, `post-bulk`.
+
+See `skills/haszno/references/recipes.md` Recipes 9–21 for step-by-step workflows.
 
 ---
 

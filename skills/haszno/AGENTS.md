@@ -180,7 +180,58 @@ haszno login    # prompts for e-mail + password; token saved to ~/.config/haszno
 | **Show before posting** | Compose the full ad draft and confirm with the user before calling any write endpoint. |
 | **Reserving is not paying** | Never state or imply money changed hands via Haszno. |
 | **No invented data** | Don't invent attributes, prices, or photos — ask the user or use the AI suggestion tools and label results as suggestions. |
-| **Phone stays private** | Use `contactPhone` / `--contact-phone`, never put it in ad text. |
+| **Phone/email stays private** | Use `contactPhone` / `--contact-phone`, never put phone or e-mail in ad text, messages, inquiry replies or reviews. |
+| **Confirm counter-offer** | Show the exact amount and get a "yes" before calling `haszno shop reservation counter` or `haszno_shop_counter_offer`. |
+| **Confirm review** | Show the rating + comment and get a "yes" before submitting — reviews are permanent. |
+| **Dry-run before bulk** | Always run `haszno shop post-bulk --dry-run` first; show the preview, then re-run with `--yes`. |
+
+**v0.3.0 — New Shop commands (headless cheatsheet):**
+
+```bash
+# Counter-offer and negotiation:
+haszno shop reservation counter <id> --price <Ft>
+haszno shop reservation accept-counter <id>
+haszno shop reservation messages <id> --json
+haszno shop reservation message <id> --text "Üzenet szövege"
+haszno shop reservation review <id> --rating 5 --comment "Kiváló!"
+
+# Inquiry reply:
+haszno shop inquiry reply <id> --message "Igen, elérhető."
+
+# Saved searches + price watch:
+haszno shop saved-search list --json
+haszno shop saved-search add --name "iPhone 14 Pro <300 000 Ft" --query "iphone 14 pro" --max-price 300000
+haszno shop saved-search remove <id>
+haszno shop watch <adId>
+haszno shop unwatch <adId>
+
+# Post from external URL:
+haszno shop import-url "https://jofogasoldal.hu/ajanlat/12345"      # preview only
+haszno shop import-url "https://jofogasoldal.hu/ajanlat/12345" --post  # post after confirm
+
+# Draft:
+haszno shop draft show --json
+echo '{"title":"...","priceGross":5000}' | haszno shop draft save
+haszno shop draft clear
+
+# Bulk posting:
+haszno shop post-bulk ads.csv --dry-run      # preview
+haszno shop post-bulk ads.csv --yes          # post for real
+haszno shop post-bulk ./photos --from-photos --yes  # from folder
+
+# Background removal + post:
+haszno shop post --image product.jpg --remove-bg --title "..." --category butor \
+  --price 5000 --condition hasznalt --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
+
+# Delete ad:
+haszno shop delete <id>
+
+# Session tokens:
+haszno tokens list --json          # requires session auth
+haszno tokens revoke <id>          # requires session auth
+haszno logout                      # revoke current bearer + clear local config
+```
 
 **Common read operations:**
 
@@ -189,11 +240,12 @@ haszno shop search "bútor" --county Budapest --json
 haszno shop show 42 --json
 haszno shop my --json
 haszno shop reservations --as seller --json
+haszno shop saved-search list --json
 ```
 
 Full shop command and tool reference: `skills/haszno/references/commands.md` §`haszno shop`
 and `skills/haszno/references/tools.md` §`haszno_shop_*`. Recipes: `references/recipes.md`
-Recipes 9–13.
+Recipes 9–21.
 
 ---
 

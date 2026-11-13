@@ -53,6 +53,19 @@ triggers:
   - reserve this
   - haszno shop
   - marketplace
+  - alku
+  - ellenajánlat
+  - értékelés
+  - mentett keresés
+  - árfigyelés
+  - figyeld az árát
+  - import linkből
+  - tömeges feladás
+  - post-bulk
+  - saved-search
+  - import-url
+  - remove-bg
+  - háttér eltávolítás
 ---
 
 # Haszno agent skill
@@ -290,9 +303,23 @@ attributes. Use `haszno shop price-hint` / `haszno_shop_price_hint` for a price
 suggestion, and label it as a suggestion. Use `--from-photos` / `haszno_shop_suggest_from_photos`
 for AI-generated draft text, and label that as a suggestion too.
 
-**(e) Never put the user's phone number or e-mail into the ad text.** Use the dedicated
-`--contact-phone` / `contactPhone` field, which is revealed to the other party only
-after a reservation is accepted.
+**(e) Never put the user's phone number or e-mail into the ad text or into any
+free-text field** (reservation messages, inquiry replies, review comments) on their
+behalf without asking explicitly. Use the dedicated `--contact-phone` / `contactPhone`
+field, which is revealed to the other party only after a reservation is accepted.
+
+**(f) Always show and confirm a counter-offer amount before sending.** A counter-offer
+(`haszno_shop_counter_offer` / `haszno shop reservation counter`) is immediately visible
+to the buyer and cannot be unsent. Show the exact amount ("Ellenajánlatot küldök:
+195 000 Ft. Megerősíted?") and wait for an explicit "yes".
+
+**(g) Always show and confirm a review before submitting.** A review is permanent and
+publicly associated with the reviewer's account. Show the star rating and comment text,
+ask the user to confirm, then pass `confirm: true`.
+
+**(h) Always dry-run bulk posting first.** Before `haszno shop post-bulk --yes` or any
+batch ad creation loop, run with `--dry-run`, show the preview table to the user, and
+get an explicit "yes". The command stops on the first error.
 
 ### Status state machine (reservations)
 
@@ -324,7 +351,7 @@ Contact details (phone, e-mail) become visible to the other party only after acc
 | `connections` | `haszno_connections_list` | — |
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
-| `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation` |
+| `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos`, `haszno_shop_list_messages`, `haszno_shop_list_saved_searches`, `haszno_shop_get_draft` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_delete_ad`, `haszno_shop_send_inquiry`, `haszno_shop_reply_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation`, `haszno_shop_counter_offer`, `haszno_shop_accept_counter`, `haszno_shop_send_message`, `haszno_shop_review` _(confirm)_, `haszno_shop_save_search`, `haszno_shop_delete_saved_search`, `haszno_shop_watch_price`, `haszno_shop_import_from_url`, `haszno_shop_save_draft`, `haszno_shop_clear_draft`, `haszno_shop_remove_background` |
 | `proposals` | `list` | `approve`, `reject`, `rollback` |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
 | `orders` | `list` | `ship`, `receive` |
