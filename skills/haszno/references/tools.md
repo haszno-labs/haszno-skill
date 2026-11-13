@@ -30,7 +30,7 @@ Search active ads.
 
 **Parameters:**
 - `q` _(string, optional)_ — free-text query
-- `cat` _(string, optional)_ — category key (e.g. `"jarmuvek"`, `"elektronika"`)
+- `cat` _(string, optional)_ — category key (e.g. `"auto"`, `"elektronika"`)
 - `sub` _(string, optional)_ — subcategory key
 - `county` _(string, optional)_ — Hungarian county name
 - `city` _(string, optional)_ — city name
@@ -300,6 +300,228 @@ Errors: 400 if status is not `"fuggoben"`; 409 on accept if another accepted res
 
 Side effects: ad status → `"eladva"`; all other open reservations for the ad →
 `"elutasítva"`.
+
+---
+
+### `haszno_shop_counter_offer` _(write, non-destructive)_
+
+(Seller) Send a counter-offer price on a pending (`"fuggoben"`) reservation.
+The buyer is notified by e-mail and can accept it with `haszno_shop_accept_counter`.
+Can only be called on a `"fuggoben"` reservation that belongs to your ads.
+
+**Golden rule: always show the counter-offer amount to the user and get explicit
+confirmation before calling. A counter-offer is immediately visible to the buyer.**
+
+**Parameters:**
+- `id` _(integer)_ — reservation ID
+- `priceGross` _(integer, min 1)_ — counter-offer price in HUF gross
+
+**Returns:** updated `Reservation` with `counterPriceGross` set.
+
+Errors: 409 if the reservation is not `"fuggoben"` or does not belong to the authenticated seller.
+
+---
+
+### `haszno_shop_accept_counter` _(write, non-destructive)_
+
+(Buyer) Accept the seller's active counter-offer on a pending reservation.
+After acceptance: `offerPriceGross` is updated to the accepted counter price,
+`counterPriceGross` is cleared. The reservation remains `"fuggoben"` — the seller
+still needs to formally accept it.
+
+**Parameters:**
+- `id` _(integer)_ — reservation ID
+
+**Returns:** updated `Reservation` with `offerPriceGross` = previously accepted counter price.
+
+Errors: 409 if no active counter-offer exists on this reservation.
+
+---
+
+### `haszno_shop_list_messages` _(read-only)_
+
+List the message thread for a reservation. Only the buyer and the seller of that
+reservation may read the messages.
+
+**Parameters:**
+- `id` _(integer)_ — reservation ID
+
+**Returns:** `{ items: [{ id, author: "buyer" | "seller", body, createdAt }] }`
+
+Messages are ordered oldest-first (up to 500). Requires authentication.
+
+---
+
+### `haszno_shop_send_message` _(write, non-destructive)_
+
+Send a free-text message on a reservation thread.
+Both the buyer and the seller of that reservation may send messages.
+The other party is notified by e-mail (message excerpt only).
+
+**Golden rule: never put the user's phone number or e-mail into the message body
+on their behalf without asking. The dedicated contact fields (contactPhone,
+contactEmail) are the right channel for that.**
+
+**Parameters:**
+- `id` _(integer)_ — reservation ID
+- `body` _(string, 1–2000 chars)_ — message text
+
+Errors: 429 if rate limit exceeded (20 messages per hour). Requires authentication.
+
+---
+
+### `haszno_shop_review` _(write — confirm required)_
+
+Leave a 1–5 star review on a completed (`"teljesitve"`) reservation.
+Both the buyer and the seller can each leave exactly one review per reservation.
+
+**Golden rule: always show the rating and comment to the user and get explicit
+confirmation. A review is permanent and publicly associated with the seller's rating.**
+
+**Parameters:**
+- `id` _(integer)_ — reservation ID (must be `"teljesitve"`)
+- `rating` _(integer, 1–5)_ — 1 = worst, 5 = best
+- `comment` _(string, max 1000 chars, optional)_ — review text
+- `confirm` _(boolean, must be `true`)_
+
+Errors: 409 if the reservation is not `"teljesitve"` or already reviewed by this party.
+
+---
+
+### `haszno_shop_reply_inquiry` _(write, non-destructive)_
+
+(Seller) Reply to an inquiry a buyer sent on one of your ads.
+The inquirer is notified by e-mail. Each inquiry can have at most ONE reply.
+
+**Golden rule: never put the user's phone number or e-mail into the reply body
+on their behalf without asking.**
+
+**Parameters:**
+- `id` _(integer)_ — inquiry ID (from `haszno_shop_list_inquiries`)
+- `message` _(string, 1–2000 chars)_ — reply text
+
+Errors: 409 if the inquiry already has a reply.
+
+---
+
+### `haszno_shop_list_saved_searches` _(read-only)_
+
+List all saved searches for the authenticated user, newest first.
+
+**Returns:** array of `SavedSearch`:
+- `id, name, filters (q, cat, sub, min, max, county, cond), alertEnabled, lastAlertSentAt, createdAt`
+
+---
+
+### `haszno_shop_save_search` _(write, non-destructive)_
+
+Save a search filter set with optional e-mail alerts.
+When `alertEnabled=true` (default), the user gets an e-mail when matching new ads appear.
+
+**Parameters:**
+- `name` _(string, 1–80 chars)_ — human-readable name, e.g. `"Túrakerékpár <50 000 Ft"`
+- `filters` _(object)_:
+  - `q` _(string, optional)_ — full-text query
+  - `cat` _(string, optional)_ — category key
+  - `sub` _(string, optional)_ — subcategory key
+  - `min` _(integer, optional)_ — minimum price in HUF gross
+  - `max` _(integer, optional)_ — maximum price in HUF gross
+  - `county` _(string, optional)_ — county name
+  - `cond` _(`"uj" | "ujszeru" | "hasznalt" | "serult"`, optional)_ — condition filter
+- `alertEnabled` _(boolean, optional, default `true`)_
+
+**Returns:** created `SavedSearch` with its `id`.
+
+Errors: 422 if the user has reached the 20 saved-search cap.
+
+---
+
+### `haszno_shop_delete_saved_search` _(write, destructive)_
+
+Delete a saved search by its ID. Idempotent — no error if the ID does not exist
+or does not belong to the authenticated user.
+
+**Parameters:**
+- `id` _(integer)_ — saved search ID from `haszno_shop_list_saved_searches`
+
+**Returns:** `{ ok: true }`
+
+---
+
+### `haszno_shop_watch_price` _(write, non-destructive)_
+
+Subscribe to (`watch=true`) or unsubscribe from (`watch=false`) price-drop e-mail
+alerts for a specific ad.
+
+- `watch=true` → PUT `/api/v1/shop/ads/:adId/watch`; the ad must be `"aktiv"`. Returns `{ watched: true }`.
+- `watch=false` → DELETE `/api/v1/shop/ads/:adId/watch`; idempotent. Returns `{ watched: false }`.
+
+**Parameters:**
+- `adId` _(integer)_ — ad ID
+- `watch` _(boolean)_ — `true` to subscribe, `false` to unsubscribe
+
+Errors: 400 if the ad is not `"aktiv"` and `watch=true`.
+
+---
+
+### `haszno_shop_import_from_url` _(write, non-destructive)_
+
+Fetch an external product or classifieds listing page and extract its metadata
+(title, description, price, images) as a pre-filled ad draft.
+
+**This tool NEVER creates or posts an ad.** It only returns extracted data.
+You must still call `haszno_shop_create_ad` (with `confirm: true`) separately.
+
+**Parameters:**
+- `url` _(string, URL, max 2048 chars)_ — public URL of the product page
+
+**Returns:** `{ title?, description?, price?, images: string[], parsed: object }`
+
+Errors: 422 if the URL cannot be fetched or is a login-walled page (e.g. Facebook).
+Rate-limited to 10 imports per hour. Requires authentication.
+
+---
+
+### `haszno_shop_get_draft` _(read-only)_
+
+Get the authenticated user's current server-side ad creation draft.
+
+**Returns:** `{ payload: {...}, updatedAt: string }` or `null` if no draft exists.
+
+---
+
+### `haszno_shop_save_draft` _(write, non-destructive)_
+
+Save or replace the ad creation draft (upsert). Pass any subset of `haszno_shop_create_ad`
+fields (without `confirm`). Maximum draft size is 64 KB.
+
+**Parameters:**
+- `payload` _(object)_ — partial ad fields (any subset of `haszno_shop_create_ad`)
+
+**Returns:** `{ payload: {...}, updatedAt: string }`
+
+---
+
+### `haszno_shop_clear_draft` _(write, destructive)_
+
+Delete the ad creation draft. Idempotent — no error if no draft exists.
+
+**Returns:** `{ ok: true }`
+
+---
+
+### `haszno_shop_remove_background` _(write, non-destructive)_
+
+Process an already-uploaded image through the AI background removal service.
+The original image is preserved; a NEW image row is created with the processed result.
+
+**Parameters:**
+- `imageId` _(integer)_ — numeric ID from `haszno_shop_upload_image`
+
+**Returns:** `{ id, url }` of the **new** background-removed image. Use this `url` in your ad.
+
+Errors: 503 if the AI feature is not enabled on this server.
+Rate-limited to 10 calls per hour. Requires authentication.
 
 ---
 

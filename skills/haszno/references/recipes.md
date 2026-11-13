@@ -298,6 +298,11 @@ Same as Recipe 4, steps 5–6.
 
 Goal: take one or more photos the user shares and post them as an ad on the Haszno Shop.
 
+> **Prerequisite — seller type (one-time):** A new account must call
+> `haszno_shop_set_seller_profile(sellerType="maganszemely")` (or `"kereskedo"` with company details)
+> before the first ad. The API returns HTTP 409 otherwise.
+> Check first with `haszno_shop_list_my_ads` — if the user already has ads, skip this step.
+
 ### MCP sequence
 
 ```
@@ -493,8 +498,7 @@ Goal: a seller checks new messages and reservation requests, then accepts or dec
 ```
 1. haszno_shop_list_inquiries
    → show each: adTitle, senderName, message, createdAt
-   (Inquiries are informational; there is no reply API — the buyer gets contact
-   details after acceptance; direct the user to reply via phone/email once accepted.)
+   Seller can reply with `haszno_shop_reply_inquiry(id=<id>, message='...')`; each inquiry allows at most one reply.
 
 2. haszno_shop_list_reservations(role="seller", status="fuggoben")
    → list pending reservation requests
@@ -755,4 +759,287 @@ Sikeres elfogadás után a `partnerbolt` shop eléri a szállító #42 katalógu
 >  3 terméket. Megerősíted?"
 
 Visszajelzés: `{ pushed: 3, failed: 0 }` → "3 termék sikeresen kiküldve a webshopba."
+
+---
+
+## Recipe 14: "Szólj, ha felkerül ilyen" — mentett keresés és árfigyelő
+
+### Mentett keresés (értesítő, ha új hirdetés illik a szűrőre)
+
+```
+MCP:
+1. haszno_shop_save_search(
+     name="Túrakerékpár <50 000 Ft",
+     filters={ q:"túrakerékpár", max:50000, cond:"hasznalt" },
+     alertEnabled=true      # e-mail értesítőt küld, ha új hirdetés jelenik meg
+   )
+   → { id: 7, name: "Túrakerékpár <50 000 Ft", alertEnabled: true, createdAt: ... }
+
+2. Lista:
+   haszno_shop_list_saved_searches()
+   → tömb SavedSearch-ekkel
+
+3. Törlés (ha már nem kell):
+   haszno_shop_delete_saved_search(id=7)
+   → { ok: true }
+```
+
+```bash
+# CLI:
+haszno shop saved-search add --name "Túrakerékpár <50 000 Ft" \
+  --query "túrakerékpár" --max-price 50000 --condition hasznalt
+
+haszno shop saved-search list --json
+
+haszno shop saved-search remove 7
+```
+
+### Árfigyelő egy konkrét hirdetésnél
+
+```
+MCP:
+haszno_shop_watch_price(adId=42, watch=true)
+   → { watched: true }
+   # E-mail értesítő, ha az ár csökken
+
+# Leiratkozás:
+haszno_shop_watch_price(adId=42, watch=false)
+   → { watched: false }
+```
+
+```bash
+haszno shop watch 42
+haszno shop unwatch 42
+```
+
+### Mit mondj a felhasználónak
+
+> "Elmentettem a keresést. Ha felkerül ilyen hirdetés, e-mailben értesítelek."
+
+---
+
+## Recipe 15: Hirdetés feladása linkből
+
+Goal: a felhasználó beküld egy URL-t (pl. egy másik hirdetési oldal hirdetése),
+és Hasznóra akarja feladni.
+
+```
+MCP:
+1. haszno_shop_import_from_url(url="https://masikoldal.hu/ajanlat/12345")
+   → { title: "Nokia 3310", description: "...", price: 3500,
+       images: [...], parsed: { condition: "hasznalt" } }
+   Ez az eszköz SOHA NEM ad fel hirdetést — csak az adatokat nyeri ki.
+
+2. Mutasd meg a kinyert adatokat a felhasználónak:
+   "Ezt találtam: [title], ár: [price] Ft, [leírás részlet].
+    Feladjuk így Hasznóra?"
+
+3. Ha a felhasználó igent mond, kérd be a hiányzó kötelező mezőket:
+   county, city, contactName, contactEmail, category (ha nem sikerült kinyerni).
+
+4. haszno_shop_create_ad(
+     title=..., priceGross=..., description=..., images=[...],
+     category=..., condition="hasznalt",
+     county=..., city=...,
+     contactName=..., contactEmail=...,
+     negotiable=false, showPhone=false, resellable=false, partnerCommissionPct=0,
+     confirm=true
+   )
+```
+
+```bash
+# CLI — csak kinyerés:
+haszno shop import-url "https://masikoldal.hu/ajanlat/12345"
+
+# Kinyerés + feladás (megerősítést kér):
+haszno shop import-url "https://masikoldal.hu/ajanlat/12345" --post
+```
+
+**Figyelmeztetés:** a Facebook-os URL-eket a szerver visszautasítja (bejelentkezési fal).
+
+---
+
+## Recipe 16: Tömeges hirdetésfeladás könyvtárból vagy CSV-ből
+
+### Könyvtár-mód (AI-javaslat képekből)
+
+Minden alkönyvtár = egy hirdetés képei.
+
+```
+Mappa-struktúra:
+  termekek/
+    billy-konyvespolc/
+      foto1.jpg
+      foto2.jpg
+    samsung-monitor/
+      foto1.jpg
+```
+
+```bash
+# Előnézet (nem ad fel):
+haszno shop post-bulk ./termekek --from-photos --dry-run
+
+# Éles (minden alkönyvtárból egyet felad):
+haszno shop post-bulk ./termekek --from-photos --yes
+```
+
+### CSV-mód
+
+**Kötelező CSV-oszlopok:** `title, category, condition, county, city, contact_name, contact_email`
+
+**Opcionális:** `subcategory, price, negotiable, description, contact_phone, show_phone, images`
+
+```bash
+# Előnézet:
+haszno shop post-bulk ads.csv --dry-run
+
+# Éles:
+haszno shop post-bulk ads.csv --yes
+```
+
+**Aranyszabályok:**
+- Mindig futtasd `--dry-run` előbb — mutasd meg az előnézeti táblát a felhasználónak.
+- Az első hibánál megáll és jelenti a hiba okát.
+- Ne futtasd `--yes` nélkül, hacsak a felhasználó nem adott kifejezett jóváhagyást.
+
+---
+
+## Recipe 17: Alku és ellenajánlat — a teljes tárgyalási folyamat
+
+Goal: vevő lefoglalja az árut, az eladó ellenajánlatot tesz, a vevő elfogadja,
+majd az eladó elfogadja a foglalást, és végül teljesítik.
+
+### MCP szekvencia
+
+```
+1. VEVŐ: Foglalás küldése ellenajánlattal:
+   haszno_shop_reserve_ad(adId=42, offerPriceGross=180000, confirm=true)
+   → { reservation: { id:7, status:"fuggoben", offerPriceGross:180000 } }
+
+2. ELADÓ: Ellenajánlat küldése:
+   [Mutasd az eladónak: "Az aktuális ajánlat 180 000 Ft. Ellenajánlatot küldesz?"]
+   haszno_shop_counter_offer(id=7, priceGross=195000)
+   → { reservation: { ..., counterPriceGross:195000 } }
+   FONTOS: mindig kérd az eladó megerősítését az ellenajánlat összegével.
+
+3. VEVŐ: Ellenajánlat elfogadása:
+   haszno_shop_accept_counter(id=7)
+   → { reservation: { ..., offerPriceGross:195000, counterPriceGross:null } }
+
+4. ELADÓ: Foglalás elfogadása:
+   haszno_shop_respond_reservation(id=7, action="accept")
+   → { reservation: { ..., status:"elfogadva", heldUntil:... } }
+
+5. (Átadás/fizetés közvetlenül a felek között)
+
+6. ELADÓ: Teljesítés:
+   haszno_shop_complete_reservation(id=7, soldPriceGross=195000, confirm=true)
+   → { reservation: { ..., status:"teljesitve", agreedPriceGross:195000 } }
+```
+
+```bash
+# CLI:
+haszno shop reserve 42 --offer 180000 --yes
+haszno shop reservation counter 7 --price 195000
+haszno shop reservation accept-counter 7
+haszno shop reservation accept 7
+haszno shop reservation complete 7 --price 195000
+```
+
+---
+
+## Recipe 18: Üzenetküldés a foglaláson
+
+Goal: vevő és eladó szöveges üzeneteket váltanak egy foglaláson belül.
+
+```
+MCP:
+1. haszno_shop_list_messages(id=7)
+   → { items: [ { id, author:"buyer"|"seller", body, createdAt } ] }
+
+2. haszno_shop_send_message(id=7, body="Mikor tudod elhozni?")
+   → { message: { id, author, body, createdAt } }
+
+ARANYSZABÁLY: soha ne tedd bele a felhasználó telefonszámát vagy e-mail-
+ét az üzenet szövegébe az ő nevében anélkül, hogy megkérdezted volna.
+```
+
+```bash
+# CLI:
+haszno shop reservation messages 7
+haszno shop reservation message 7 --text "Mikor tudod elhozni?"
+```
+
+---
+
+## Recipe 19: Válasz érdeklődőnek (eladóként)
+
+Goal: az eladó válaszol egy vevő által küldött érdeklődésre (inquiry).
+
+```
+MCP:
+1. haszno_shop_list_inquiries()
+   → { items: [ { id, adId, adTitle, senderName, message, readAt, createdAt } ] }
+
+2. haszno_shop_reply_inquiry(id=3, message="Igen, még elérhető! Pest déli részén.")
+   → { reply: { id, inquiryId, message, createdAt } }
+
+ARANYSZABÁLYOK:
+- Minden érdeklődés legfeljebb egy válasz kaphat (409, ha már válaszolt).
+- Soha ne tedd bele a felhasználó telefonszámát vagy e-mail-ét a válasz szövegébe
+  anélkül, hogy megkérdezted volna.
+```
+
+```bash
+# CLI:
+haszno shop inquiries --json
+haszno shop inquiry reply 3 --message "Igen, még elérhető! Pest déli részén."
+```
+
+---
+
+## Recipe 20: Értékelés leadása teljesített foglalásra
+
+Goal: a foglalás teljesítése után vevő és/vagy eladó értékelést hagy egymásnak.
+
+```
+MCP:
+haszno_shop_review(id=7, rating=5, comment="Gyors, pontos, barátságos!", confirm=true)
+→ { review: { id, reservationId, role:"buyer"|"seller", rating, comment, createdAt } }
+
+ARANYSZABÁLYOK:
+- Mindig mutasd meg a csillagszámot és a megjegyzést a felhasználónak,
+  és kérj megerősítést — az értékelés végleges és nyilvános.
+- 409 hiba: a foglalás még nincs "teljesitve", vagy már adott értékelést.
+- Csak "teljesitve" státuszú foglalásra lehet értékelni.
+```
+
+```bash
+# CLI:
+haszno shop reservation review 7 --rating 5 --comment "Gyors, pontos, barátságos!"
+```
+
+---
+
+## Recipe 21: Biztonságos kijelentkezés (token visszavonása)
+
+Goal: a felhasználó ki szeretne jelentkezni — a token visszavonódjon a szerveren is.
+
+```bash
+# CLI — revoke + local delete:
+haszno logout
+# → "Token visszavonva a szerveren."
+# → "Kijelentkezve. Token törölve: ~/.config/haszno/config.json"
+
+# Ha listázni akarod az aktív tokeneket (session auth szükséges):
+haszno tokens list --json
+
+# Egy konkrét token visszavonása (session auth szükséges):
+haszno tokens revoke 5
+```
+
+**Megjegyzés:** a `haszno logout` Bearer-tokent vált, és ha a szerver nem érhető el,
+akkor is törli a helyi konfigurációt (figyelmeztetéssel). A `tokens list` és `tokens revoke`
+session-alapú hitelesítést igényelnek — ezek csak böngészős session-nel rendelkező
+környezetben érhetők el.
 

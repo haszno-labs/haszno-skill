@@ -104,6 +104,7 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 | `--price <Ft>` | yes | Asking price in HUF gross |
 | `--negotiable` | — | Mark price as negotiable |
 | `--condition <állapot>` | yes | `uj` \| `ujszeru` \| `hasznalt` \| `serult` |
+| `--defects <text>` | cond. | Defect/damage description (required when condition is `hasznalt` or `serult`, min 10 chars) |
 | `--description <text>` | — | Free-text description |
 | `--county <megye>` | yes | County (Pest, Győr-Moson-Sopron, …) |
 | `--city <varos>` | yes | City / settlement |
@@ -121,13 +122,15 @@ Post a new ad. Always show a `--dry-run` preview first; get explicit confirmatio
 
 ```bash
 # Dry-run preview:
-haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+haszno shop post --title "Ikea Billy könyvespolc" --category otthon_butor \
+  --price 8000 --condition hasznalt --defects "Kisebb karcolás az oldalán, egyébként jó állapot." \
+  --county Budapest --city Óbuda \
   --contact-name "Kovács Anna" --contact-email "anna@example.com" --dry-run
 
 # Actual post:
-haszno shop post --title "Ikea Billy könyvespolc" --category butor \
-  --price 8000 --condition hasznalt --county Budapest --city Óbuda \
+haszno shop post --title "Ikea Billy könyvespolc" --category otthon_butor \
+  --price 8000 --condition hasznalt --defects "Kisebb karcolás az oldalán, egyébként jó állapot." \
+  --county Budapest --city Óbuda \
   --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
 ```
 
@@ -250,6 +253,264 @@ Prompts for confirmation.
 Side effect: ad status → `"eladva"`; all other open reservations for the ad →
 `"elutasítva"`. Prompts for confirmation. (Note: there is no `--yes` flag for this
 command — always prompts interactively.)
+
+---
+
+### `haszno shop reservation counter <id> --price <Ft>` _(write)_
+
+(Seller) Send a counter-offer price on a pending (`"fuggoben"`) reservation.
+`--price` is required (HUF gross, must be a positive integer).
+Always show the amount to the user and confirm before running — a counter-offer is
+immediately visible to the buyer.
+Prompts for confirmation.
+
+---
+
+### `haszno shop reservation accept-counter <id>` _(write)_
+
+(Buyer) Accept the seller's active counter-offer on a pending reservation.
+After acceptance the reservation remains `"fuggoben"` — the seller still needs to
+formally accept. Prompts for confirmation.
+
+Errors: 409 if no active counter-offer exists.
+
+---
+
+### `haszno shop reservation messages <id> [--json]` _(read)_
+
+List the message thread for a reservation. Both buyer and seller can read.
+Messages are shown oldest-first.
+
+---
+
+### `haszno shop reservation message <id> --text <szöveg>` _(write)_
+
+Send a free-text message on a reservation thread.
+`--text` is required (1–2000 characters).
+
+**Never put the user's phone number or e-mail into the message body on their
+behalf without asking.** Use the dedicated contact fields instead.
+
+Rate-limited: 20 messages per hour.
+
+---
+
+### `haszno shop reservation review <id> --rating <1-5> [--comment <szöveg>]` _(write)_
+
+Leave a review on a completed (`"teljesitve"`) reservation.
+`--rating` is required (integer 1–5). `--comment` is optional (max 1000 chars).
+Always show the rating and comment to the user and confirm — a review is permanent.
+Prompts for confirmation.
+
+Errors: 409 if the reservation is not `"teljesitve"` or already reviewed.
+
+---
+
+### `haszno shop inquiry reply <id> --message <szöveg>` _(write)_
+
+(Seller) Reply to an inquiry from a buyer. `--message` is required (1–2000 chars).
+Each inquiry accepts exactly one reply.
+
+**Never put the user's phone number or e-mail into the reply body on their
+behalf without asking.**
+
+Errors: 409 if the inquiry already has a reply.
+
+---
+
+### `haszno shop saved-search list [--json]` _(read)_
+
+List your saved searches with their filters and alert settings.
+
+---
+
+### `haszno shop saved-search add --name <név> [filters] [--no-alert]` _(write)_
+
+Create a new saved search with optional e-mail alerts (alerts are **on** by default).
+`--name` is required. Use `--no-alert` to disable e-mail notifications.
+
+**Filter flags** (same as `haszno shop search`):
+
+| Flag | Description |
+|---|---|
+| `--query <szöveg>` | Free-text search query |
+| `--category <id>` | Category key |
+| `--subcategory <id>` | Subcategory key |
+| `--min-price <Ft>` | Minimum price (HUF gross) |
+| `--max-price <Ft>` | Maximum price (HUF gross) |
+| `--county <megye>` | County |
+| `--condition <állapot>` | `uj` \| `ujszeru` \| `hasznalt` \| `serult` |
+
+Errors: 422 if the 20 saved-search cap is reached.
+
+```bash
+haszno shop saved-search add --name "Túrakerékpár <50 000 Ft" \
+  --query "túrakerékpár" --max-price 50000 --condition hasznalt
+```
+
+---
+
+### `haszno shop saved-search remove <id>` _(write)_
+
+Delete a saved search by ID. Idempotent.
+
+---
+
+### `haszno shop watch <adId>` _(write)_
+
+Subscribe to price-drop e-mail alerts for a specific active ad.
+The ad must be `"aktiv"`.
+
+---
+
+### `haszno shop unwatch <adId>` _(write)_
+
+Unsubscribe from price-drop alerts for an ad. Idempotent.
+
+---
+
+### `haszno shop import-url <url> [--post] [--yes]` _(read / write)_
+
+Fetch an external product page and extract its metadata (title, description, price, images)
+as a pre-filled ad draft. **Never posts without `--post`.**
+
+| Flag | Description |
+|---|---|
+| _(none)_ | Print extracted data only — no ad is created |
+| `--post` | Also attempt to create an ad from the extracted data (interactively confirms unless `--yes`) |
+| `--yes` | Skip confirmation when used with `--post` |
+
+```bash
+# Extract only (safe to run without confirmation):
+haszno shop import-url "https://jofogasoldal.hu/ajanlat/12345"
+
+# Extract and post (confirms unless --yes):
+haszno shop import-url "https://jofogasoldal.hu/ajanlat/12345" --post
+```
+
+---
+
+### `haszno shop draft show [--json]` _(read)_
+
+Show the current server-side ad creation draft.
+
+---
+
+### `haszno shop draft save` _(write)_
+
+Save a draft from JSON piped on stdin (upsert, max 64 KB).
+
+```bash
+echo '{"title":"Ikea Billy","priceGross":8000}' | haszno shop draft save
+```
+
+---
+
+### `haszno shop draft clear` _(write)_
+
+Delete the current ad creation draft. Idempotent.
+
+---
+
+### `haszno shop post --remove-bg` _(flag for `shop post`)_
+
+When passed alongside `--image` files, runs AI background removal on each uploaded
+image before creating the ad. The original images are preserved; the processed
+versions are used in the ad.
+
+```bash
+haszno shop post --image product.jpg --remove-bg \
+  --title "Fehér konyhai szék" --category otthon_butor \
+  --price 5000 --condition hasznalt --defects "Kisebb kopásnyomok a lábakon." \
+  --county Budapest --city Óbuda \
+  --contact-name "Kovács Anna" --contact-email "anna@example.com" --yes
+```
+
+---
+
+### `haszno shop post-bulk <forrás> [--from-photos] [--dry-run] [--yes]` _(write)_
+
+Post multiple ads from a CSV file or a folder of subdirectories.
+
+| Mode | Trigger | Behaviour |
+|---|---|---|
+| CSV | `<forrás>` ends in `.csv` or is a file | Reads rows from the CSV; each row becomes one ad |
+| Könyvtár | `<forrás>` is a directory (or `--from-photos`) | Each subdirectory = one ad; images are uploaded and AI fills in the metadata |
+
+**CSV column names** (must match exactly):
+`title, category, subcategory, price, negotiable, condition, defects, description, county, city, contact_name, contact_phone, contact_email, show_phone, images`
+
+`defects` is required (min 10 chars) when `condition` is `hasznalt` or `serult`; leave the column empty for `uj`/`ujszeru`.
+
+| Flag | Description |
+|---|---|
+| `--from-photos` | Force directory mode even if source looks like a file |
+| `--dry-run` | Print a preview table, do not call API |
+| `--yes` | Skip per-batch confirmation (required for live posting) |
+
+**Golden rule: always run `--dry-run` first. Show the preview to the user and
+get an explicit "yes" before posting. Stops on the first error.**
+
+```bash
+# CSV mode — preview only:
+haszno shop post-bulk ads.csv --dry-run
+
+# Directory mode — post for real (each subdir must contain image files):
+haszno shop post-bulk ./photos --from-photos --yes
+```
+
+---
+
+### `haszno shop delete <id>` _(write)_
+
+Permanently delete an ad. Irreversible. Prompts for confirmation.
+
+---
+
+## `haszno shop profile` — Seller profile (one-time setup)
+
+> **Required before the first ad.** A new account has no seller type set. The API returns
+> HTTP 409 on the first `haszno shop post` until `haszno shop profile seller-type` is called once.
+
+### `haszno shop profile show [--json]` _(read)_
+
+Show the current seller profile (sellerType, company info, declaredAt).
+
+### `haszno shop profile seller-type maganszemely` _(write)_
+
+Register as a private individual (magánszemély).
+
+```bash
+haszno shop profile seller-type maganszemely
+```
+
+### `haszno shop profile seller-type kereskedo --company-name <név> --company-address <cím> [--company-reg-number <szám>]` _(write)_
+
+Register as a business/trader (kereskedő). `--company-name` and `--company-address` are required.
+
+```bash
+haszno shop profile seller-type kereskedo \
+  --company-name "Példa Kft." --company-address "1234 Budapest, Példa u. 1."
+```
+
+---
+
+## `haszno tokens` — API token management
+
+### `haszno tokens list [--json]` _(read — session auth required)_
+
+List active API tokens for the current account.
+Requires session-based authentication (not a Bearer token) — only usable in
+environments with cookie/session support.
+
+**Output fields:** `id, name, scope, createdAt, lastUsedAt, expiresAt`
+
+---
+
+### `haszno tokens revoke <id>` _(write — session auth required)_
+
+Revoke an API token by its ID.
+Requires session-based authentication.
 
 ---
 
