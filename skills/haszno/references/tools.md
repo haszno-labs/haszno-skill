@@ -115,7 +115,9 @@ Contact fields are non-null only when `status` is `"elfogadva"` or `"teljesitve"
 
 Upload an image file; returns a URL to reference in `haszno_shop_create_ad`.
 
-**Parameters:** `content` _(base-64 encoded image)_, `filename` _(string)_
+**Parameters (choose one input form):**
+- `filePath` _(string)_ — absolute local path to a JPEG, PNG, or WebP file (e.g. `/tmp/photo.jpg`). The tool rejects files whose extension or magic bytes are not in that set.
+- `base64` _(string)_ + `mimeType` _(`"image/jpeg" | "image/png" | "image/webp"`)_ — base-64 encoded image data (without the `data:` prefix) together with its MIME type.
 
 **Returns:** `{ url: string, imageId: string }`
 
@@ -135,7 +137,7 @@ image URLs. Always label the result as a suggestion — do not post without user
 ### `haszno_shop_create_ad` _(write — confirm required)_
 
 Post a new ad. Always show the full draft to the user and require an explicit yes.
-Use `confirm: false` to preview without calling the API.
+To preview before posting, use `haszno shop post --dry-run` on the CLI instead of this tool.
 
 **Parameters:**
 - `title` _(string)_
@@ -215,7 +217,7 @@ Add or remove an ad from favorites.
 
 **Parameters:**
 - `adId` _(integer)_
-- `favorite` _(boolean)_ — `true` = add, `false` = remove
+- `save` _(boolean)_ — `true` = add to favourites, `false` = remove
 
 ---
 

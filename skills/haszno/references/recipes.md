@@ -313,17 +313,17 @@ Goal: take one or more photos the user shares and post them as an ad on the Hasz
    → { suggestedPriceGross, rangeMin, rangeMax }
    Tell the user: "Az AI szerint a piaci ár kb. X–Y Ft, javasolt ár: Z Ft."
 
-4. After user confirms/edits title, price, description:
+4. Show the draft to the user (title, price, category, description, images).
+   Ask: "Feladhatom?"
+
+5. After user says yes:
    haszno_shop_create_ad(
      title=..., category=..., subcategory=..., priceGross=...,
      condition=..., description=..., county=..., city=...,
      attrs=..., imageUrls=[url1, url2],
      contactPhone=<user's phone if provided>,
-     confirm=false   ← dry-run first
+     confirm=true
    )
-   Show full preview. Ask: "Feladhatom?"
-
-5. haszno_shop_create_ad(..., confirm=true)
    → { ad: { id, title, ... } }
 ```
 
@@ -392,11 +392,12 @@ Ask the user for any missing attributes before drafting.
              doors:5, color:"fehér" },
      imageUrls=[...],
      contactPhone=<user's phone>,
-     confirm=false   ← preview first
+     confirm=true
    )
-   Show draft; get yes.
+   → { ad: { id, title, ... } }
 
-4. haszno_shop_create_ad(..., confirm=true)
+   Before calling, show the draft (title, price, category, attrs) and ask: "Feladhatom?"
+   Call only after user confirms.
 ```
 
 ### CLI equivalent
@@ -439,18 +440,18 @@ Goal: search for a specific item, compare offers, and send a reservation to the 
    Note: sellerPhone/sellerEmail are not shown until reservation is accepted.
 
 3. User says "reserve it":
+   Show the user a summary: "Ezt a foglalási kérelmet küldöm el az eladónak:
+   [message, offerPriceGross if set]. Megerősítesz? (A foglalás NEM fizetés —
+   az eladóval közvetlenül egyeztek meg a fizetésről és az átadásról.)"
+
+4. After user confirms:
    haszno_shop_reserve_ad(
      adId=<id>,
      message="Délután 5 után tudok átmenni.",
      offerPriceGross=220000,  # optional counter-offer
      phone="+36201234567",    # optional, only if user explicitly provides it
-     confirm=false   ← show what will be sent
+     confirm=true
    )
-   Tell user: "Ezt a foglalási kérelmet küldöm el az eladónak: [summary].
-               Megerősítesz? (A foglalás NEM fizetés — az eladóval közvetlenül
-               egyeztek meg a fizetésről és az átadásról.)"
-
-4. haszno_shop_reserve_ad(..., confirm=true)
    → { reservation: { id, status:"fuggoben", ... } }
 ```
 
@@ -492,14 +493,11 @@ Goal: a seller checks new messages and reservation requests, then accepts or dec
 3. For each reservation, show: ad.title, buyerName, message, offerPriceGross, createdAt
 
 4. User says "accept #3":
-   haszno_shop_respond_reservation(
-     id=3, action="accept",
-     heldUntil="2026-11-20T18:00:00Z",  # optional pick-up deadline
-     confirm=false  ← show what will happen
-   )
-   "Elfogadom a foglalást — a vevő megkapja az elérhetőségeidet. Határidő: nov. 20. 18:00."
+   Tell user: "Elfogadom a foglalást — a vevő megkapja az elérhetőségeidet.
+   Határidő: nov. 20. 18:00. Megerősítesz?"
 
-5. haszno_shop_respond_reservation(id=3, action="accept",
+5. After user confirms:
+   haszno_shop_respond_reservation(id=3, action="accept",
                                     heldUntil="2026-11-20T18:00:00Z", confirm=true)
    → { reservation: { id:3, status:"elfogadva", heldUntil:... } }
 
