@@ -22,6 +22,228 @@ Config dir: `~/.config/haszno` (falls back to `~/.config/arfutar` if present).
 
 ---
 
+## `haszno login` / `logout` / `whoami` — CLI authentication _(READ / WRITE)_
+
+### `haszno login`
+
+Interactive login: prompts for e-mail and password, issues a write-scope token saved
+to `~/.config/haszno/config.json`. Run once; both CLI and MCP then share this key automatically.
+
+```bash
+haszno login
+# → Email: you@example.com
+# → Password: ••••••••••
+# → Logged in as Kovács Anna (kovács bolt). Token saved.
+```
+
+---
+
+### `haszno logout`
+
+Revoke the current CLI token and remove it from local config. **Write.**
+
+---
+
+### `haszno whoami`
+
+Print the authenticated user: name, email, shopName.
+
+---
+
+## `haszno shop` — Marketplace (free, no plans)
+
+> The Haszno Shop is free. Never mention plans or pricing for using it.
+> Posting an ad, sending an inquiry, and reserving are real, visible actions —
+> show the user the final draft and get an explicit yes first. See SKILL.md §
+> "Haszno Shop golden rules".
+
+### `haszno shop categories [--json]` _(read)_
+
+List the top-level and sub-categories available for ad posting.
+
+---
+
+### `haszno shop search [<query>] [--json]` _(read)_
+
+Search active ads.
+
+**Flags:** `--category <key>`, `--subcategory <key>`, `--county <megye>`,
+`--min-price <Ft>`, `--max-price <Ft>`, `--condition <uj|ujszerű|hasznalt|hibas>`,
+`--reserved` (include reserved ads), `--page <n>`
+
+```bash
+haszno shop search "iPhone 14" --condition ujszerű --max-price 200000 --json \
+  | jq '.[] | {id, title, priceGross, reserved, county}'
+```
+
+---
+
+### `haszno shop show <id> [--json]` _(read)_
+
+Show full ad detail. Contact fields (`sellerPhone`, `sellerEmail`) are populated only
+when you have an accepted reservation for that ad.
+
+---
+
+### `haszno shop price-hint [--json]` _(read)_
+
+Get an AI price suggestion. **Flags:** `--title <str>`, `--category <key>`,
+`--description <text>`, `--condition <str>`. Always label the result as a suggestion.
+
+---
+
+### `haszno shop post ...` _(write — requires `--yes`)_
+
+Post a new ad. Always show a `--dry-run` preview first; get explicit confirmation.
+
+| Flag | Required | Description |
+|---|---|---|
+| `--title <str>` | yes | Ad title |
+| `--category <key>` | yes | Category key from `haszno shop categories` |
+| `--subcategory <key>` | — | Subcategory |
+| `--price <Ft>` | yes | Asking price in HUF gross |
+| `--negotiable` | — | Mark price as negotiable |
+| `--condition <str>` | — | `uj` / `ujszerű` / `hasznalt` / `hibas` |
+| `--description <text>` | — | Free-text description |
+| `--county <megye>` | — | County (Pest, Győr-Moson-Sopron, …) |
+| `--city <varos>` | — | City / settlement |
+| `--attr key=value` | — | Category-specific attribute (repeatable) |
+| `--image <file>` | — | Attach image (repeatable, up to 10) |
+| `--contact-name <name>` | — | Contact name shown to buyer |
+| `--contact-phone <tel>` | — | Phone revealed to buyer only after acceptance |
+| `--show-phone` | — | Allow buyer to see phone after acceptance |
+| `--from-photos` | — | AI-suggest title/description/category from `--image` files |
+| `--dry-run` | — | Preview only — does not call API |
+| `--yes` | required | Skip confirmation prompt |
+
+```bash
+# Dry-run preview:
+haszno shop post --title "Ikea Billy könyvespolc" --category butor \
+  --price 8000 --condition hasznalt --county Budapest --dry-run
+
+# Actual post:
+haszno shop post --title "Ikea Billy könyvespolc" --category butor \
+  --price 8000 --condition hasznalt --county Budapest --yes
+```
+
+---
+
+### `haszno shop my [--json]` _(read)_
+
+List your own ads (all statuses).
+
+---
+
+### `haszno shop edit <id> [same flags as post, except --from-photos / --dry-run]` _(write — requires `--yes`)_
+
+Edit an existing ad. Only the flags you pass are updated.
+
+---
+
+### `haszno shop pause <id>` _(write)_
+
+Pause an ad (hide from search results). Prompts for confirmation.
+
+---
+
+### `haszno shop activate <id>` _(write)_
+
+Re-publish a paused ad. Prompts for confirmation.
+
+---
+
+### `haszno shop sold <id> [--price <Ft>]` _(write)_
+
+Mark an ad as sold; optionally record the final sale price. Prompts for confirmation.
+
+---
+
+### `haszno shop renew <id>` _(write)_
+
+Bump an ad back to the top of search results. Prompts for confirmation.
+
+---
+
+### `haszno shop inquiries [--json]` _(read)_
+
+List messages/inquiries received on your ads (seller view).
+
+---
+
+### `haszno shop inquire <adId> --message <text>` _(write)_
+
+Send a message to the seller of an ad. Prompts for confirmation.
+
+---
+
+### `haszno shop favorite <adId>` _(write)_
+
+Save an ad to your favorites. Non-destructive.
+
+---
+
+### `haszno shop unfavorite <adId>` _(write)_
+
+Remove an ad from your favorites.
+
+---
+
+### `haszno shop favorites [--json]` _(read)_
+
+List your favorited ads.
+
+---
+
+### `haszno shop reserve <adId> [--message <text>] [--offer <Ft>] [--phone <tel>] [--yes]` _(write — requires `--yes`)_
+
+Send a reservation request to the seller.
+
+- `--message` — optional note to the seller
+- `--offer <Ft>` — counter-offer price (gross HUF)
+- `--phone <tel>` — your phone number, revealed to seller only on acceptance
+
+**Reserving is not paying.** Payment and handover happen directly between buyer and
+seller. Never say that money was moved via Haszno.
+
+```bash
+haszno shop reserve 42 --message "Átveszem Pest határán" --offer 7500 --yes
+```
+
+---
+
+### `haszno shop reservations [--as buyer|seller] [--json]` _(read)_
+
+List your reservations. `--as buyer` (default) or `--as seller`.
+
+---
+
+### `haszno shop reservation accept <id> [--held-until <ISO-datetime>]` _(write)_
+
+(Seller) Accept a pending reservation. Optionally set a pick-up deadline with `--held-until`.
+Prompts for confirmation.
+
+---
+
+### `haszno shop reservation decline <id>` _(write)_
+
+(Seller) Decline a pending reservation. Prompts for confirmation.
+
+---
+
+### `haszno shop reservation cancel <id>` _(write)_
+
+(Buyer) Cancel your own reservation. Prompts for confirmation.
+
+---
+
+### `haszno shop reservation complete <id> [--price <Ft>]` _(write)_
+
+(Seller) Mark a reservation as completed. Optionally record the final sale price.
+Side effect: ad status → `"eladva"`; all other open reservations for the ad →
+`"elutasítva"`. Prompts for confirmation.
+
+---
+
 ## `haszno account` — Account & settings
 
 ### `haszno account stats [--json]`
