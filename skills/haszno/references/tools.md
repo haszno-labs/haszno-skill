@@ -52,7 +52,7 @@ you have an accepted/completed reservation for this ad.
 
 **Parameters:** `id` _(integer)_
 
-**Returns:** `Ad` with attrs, imageUrls, contactName, contactPhone (gated), contactEmail (gated), showPhone
+**Returns:** `Ad` with attrs, images, contactName, contactPhone (gated), contactEmail (gated), showPhone
 
 ---
 
