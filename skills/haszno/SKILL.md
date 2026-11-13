@@ -300,7 +300,7 @@ after a reservation is accepted.
 fuggoben → elfogadva (accept) → teljesitve (complete)
 fuggoben → elutasitva (decline, or when ad sold/paused/deleted)
 elfogadva → elutasitva (when ad sold/paused/deleted, or heldUntil expires)
-fuggoben/elfogadva → lemondva (cancel by buyer)
+fuggoben/elfogadva → visszavonva (cancel by buyer)
 ```
 
 `effectiveStatus` returns `"lejart"` at read time if status is `"elfogadva"` and
