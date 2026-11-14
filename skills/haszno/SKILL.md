@@ -3,21 +3,24 @@ name: haszno
 description: >
   Work with Haszno dropshipping data: query partner catalogue, review and approve
   price proposals, manage automation rules, check orders, find new product ideas,
-  connect webshops (bolt-bekötés), manage P2P peer partner invites, and read
-  aggregated market blog posts. Also covers the Haszno Shop free marketplace:
-  post ads, search and reserve items, manage incoming reservations and inquiries.
+  connect webshops (bolt-bekötés), manage P2P peer partner invites, read
+  aggregated market blog posts, run daily market research (napi piaci kutatás),
+  post agent findings to the daily report, propose agent actions, and manage
+  autopilot settings. Also covers the Haszno Shop free marketplace: post ads,
+  search and reserve items, manage incoming reservations and inquiries.
   Use when the user mentions Haszno, dropshipping pricing, price proposals
   (árajánlat), automation rules (automatika), product margins, Árukereső feed,
   supplier catalogue, connecting a webshop (bekötés, WooCommerce, Shopify),
   import list (import lista), push products to shop (termékek kiküldése),
-  partner invite (meghívó), peer link (partner kapcsolat), or asks to run a
-  daily dropshipping check. Also triggers on: sell this, post an ad, list my
-  item on Haszno, find me a used … on Haszno, reserve/buy this, ad posting,
-  hirdetés feladása, add fel Hasznóra, hirdesd meg, keress nekem, foglald le,
-  vedd meg, approve proposals, reject proposals, run rule, margin check,
-  veszteséges termékek, árazás automatizálás, partnerkatekógus, termékötlet,
-  dropshipping ügynök, bolt-bekötés, barát meghívása, beszállító katalógus,
-  heti összefoglaló.
+  partner invite (meghívó), peer link (partner kapcsolat), daily report (napi
+  jelentés), agent actions (ügynök javaslat, jóváhagyás), autopilot, or asks to
+  run a daily dropshipping or market research check. Also triggers on: sell
+  this, post an ad, list my item on Haszno, find me a used … on Haszno,
+  reserve/buy this, ad posting, hirdetés feladása, add fel Hasznóra, hirdesd
+  meg, keress nekem, foglald le, vedd meg, approve proposals, reject proposals,
+  run rule, margin check, veszteséges termékek, árazás automatizálás,
+  partnerkatekógus, termékötlet, dropshipping ügynök, bolt-bekötés, barát
+  meghívása, beszállító katalógus, heti összefoglaló, napi kutatás, menedzser.
 triggers:
   - haszno
   - haszno.com
@@ -40,6 +43,15 @@ triggers:
   - partner kapcsolat
   - heti összefoglaló
   - havi összefoglaló
+  - napi jelentes
+  - napi kutatás
+  - piaci kutatás
+  - daily market research
+  - napi piaci jelentes
+  - agent javaslat
+  - jóváhagyás
+  - autopilot
+  - menedzser
   - hirdetés
   - foglalás
   - eladás
@@ -229,6 +241,22 @@ so `haszno login` (or setting `HASZNO_API_KEY`) once configures both.
     retries after a network error, check `haszno_proposals_list` first before submitting
     again — the original may have been created.
 
+11. **Agent actions are propose-only.** An agent (Bearer `haszno_…` token) may
+    call `POST /api/agent/actions` to propose an action, and `POST …/:id/reject`.
+    It may NOT call `/approve`, `/undo`, or `PUT /api/agent/autopilot` — these
+    return 403. The owner approves in the UI at `/app/napi-jelentes`.
+
+12. **Antitrust rule.** Every report item and action proposal must be computed
+    from THIS shop's own data plus publicly available market prices only. Never
+    use or expose another reseller's prices, costs, or rules — even indirectly.
+
+13. **Rollback before escalating (legacy key).** If an approved proposal batch looks
+    wrong, call `haszno_proposals_rollback` with the `batchId` before anything else.
+
+14. **Demo environment is read-mostly.** Read-only GETs against the demo URL are
+    fine for smoke tests. Never POST writes to the demo unless the user explicitly
+    asks and confirms this is intentional.
+
 ---
 
 ## Safe workflows
@@ -366,6 +394,38 @@ Ask which item to drill into. Direct the user to the web UI for approval.
 Report a brief summary: overall health, pending proposals count, any stuck orders,
 profit impact. Ask the user which item to drill into.
 
+### 6 — Napi piaci kutatás (daily market research)
+
+Goal: post agent-side market findings and action proposals to the daily report.
+
+```
+1. haszno_research_brief
+   → day, shopFocus[], questions[], postTo
+
+2. For each question in questions[]:
+   - Web search (public sources only — no other resellers' private data)
+   - Verify every fact against its source URL before including it
+
+3. haszno_post_findings(day, headline, summary, items[3–10])
+   → DailyReport (confirms items persisted with origin="agent")
+
+4. haszno_propose_action(type, payload, reason, reportItemId) × ≤5
+   → AgentAction { status: "javasolt" }
+      (may be "vegrehajtva" if autopilot auto-ran it — check the response)
+
+5. Tell the owner: N findings posted, M actions await approval at /app/napi-jelentes
+```
+
+**Agent rules for this workflow:**
+- Never fabricate source URLs or prices. If you cannot verify, omit the number.
+- Never say an action was "executed" unless the server returned `status: "vegrehajtva"`.
+- Never use another shop's prices, margins, or rules as an input or source.
+- POST `/api/agent/actions` only — `/approve`, `/undo`, and autopilot PUT are
+  blocked for API tokens (403). Approval is for humans.
+- An `'ar'` action is refused (400) if the product has no known cost — do not retry.
+
+Full step-by-step: **[Recipe 22 in references/recipes.md](references/recipes.md)**
+
 ---
 
 ## Haszno Shop (free marketplace)
@@ -455,6 +515,7 @@ Contact details (phone, e-mail) become visible to the other party only after acc
 | `connections` | `haszno_connections_list` | — |
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
+| `manager` | `haszno_daily_report`, `haszno_research_brief`, `haszno_list_actions` | `haszno_post_findings` (agent findings), `haszno_propose_action` (propose only — no confirm flag; never self-approve), `haszno_withdraw_action` (withdraw own proposal) |
 | `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos`, `haszno_shop_list_messages`, `haszno_shop_list_saved_searches`, `haszno_shop_get_draft` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_reply_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation`, `haszno_shop_counter_offer`, `haszno_shop_accept_counter`, `haszno_shop_send_message`, `haszno_shop_review` _(confirm)_, `haszno_shop_save_search`, `haszno_shop_delete_saved_search`, `haszno_shop_watch_price`, `haszno_shop_import_from_url`, `haszno_shop_save_draft`, `haszno_shop_clear_draft`, `haszno_shop_remove_background` |
 | `proposals` | `list` _(any auth)_ | `propose` _(shop token write-scope)_; `approve`, `reject`, `rollback` _(legacy key only)_ |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` _(legacy key)_ | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` _(legacy key)_ |
