@@ -13,11 +13,27 @@ curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/insta
 |---|---|---|
 | `--json` | false | Machine-readable JSON output |
 | `--api-url <url>` | `$HASZNO_API_URL` | API base URL |
-| `--api-key <key>` | `$HASZNO_API_KEY` | Bearer token |
+| `--api-key <key>` | `$HASZNO_API_TOKEN` or `$HASZNO_API_KEY` | Bearer token |
 
-Authentication fallback: if `--api-key` and `$HASZNO_API_KEY` are absent,
-the client reads `$ARFUTAR_API_KEY` as a silent legacy fallback, then
-`$HASZNO_BASIC="user:pass"` for HTTP Basic.
+**Credential resolution order:**
+1. `HASZNO_API_TOKEN` — preferred for per-shop Bearer tokens (`haszno_` prefix)
+2. `HASZNO_API_KEY` / `ARFUTAR_API_KEY` — also accepted (shop token or legacy key)
+3. `~/.config/haszno/config.json` — written by `haszno login`
+4. `~/.config/arfutar/config.json` (silent backwards-compatibility)
+5. `HASZNO_BASIC="user:pass"` — HTTP Basic for demo dataset
+
+**Token scope (which commands work with a per-shop Bearer token `haszno_…`):**
+
+| Command group | Per-shop token | Legacy key |
+|---|---|---|
+| `haszno shop *` | ✅ | ✅ |
+| `haszno proposals list` | ✅ | ✅ |
+| `haszno proposals propose` | ✅ write-scope | ✅ |
+| `haszno proposals approve / reject / rollback` | ❌ 403 | ✅ |
+| `haszno products list` | ✅ (via agent route) | ✅ |
+| `haszno orders list` | ✅ (via agent route, last 20) | ✅ |
+| `haszno account / rules / catalog / feeds` | ❌ | ✅ |
+
 Config dir: `~/.config/haszno` (falls back to `~/.config/arfutar` if present).
 
 ---
@@ -633,9 +649,9 @@ Aggregated reseller market view (legal: aggregated only, no individual shop marg
 
 ## `haszno proposals` — Price proposals
 
-### `haszno proposals list [--status <pending|approved|rejected>] [--json]`
+### `haszno proposals list [--status <pending|approved|rejected>] [--json]` _(any auth)_
 
-List price proposals.
+List price proposals. Available to per-shop Bearer tokens.
 
 ```bash
 haszno proposals list --status pending --json \
@@ -644,23 +660,47 @@ haszno proposals list --status pending --json \
 
 ---
 
-### `haszno proposals approve [--ids <id,...>]`
+### `haszno proposals propose --product-id <id> --price <gross> --reason <text> [--nonce <string>]` _(shop token write-scope)_
+
+Submit a new agent-generated price proposal. The proposal is always `status: "pending"` —
+a human must approve it at haszno.com/app/javaslatok. Requires a **write-scope** per-shop
+Bearer token (`haszno_` prefix).
+
+**Flags:**
+- `--product-id <id>` _(required)_ — from `haszno products list --json`
+- `--price <gross>` _(required)_ — proposed gross price in HUF; must be ≥ floorGross
+- `--reason <text>` _(required)_ — 1–500 chars, e.g. "piaci minimumhoz igazítás"
+- `--nonce <string>` _(optional)_ — deduplicate retries; generated automatically if omitted
+
+**Returns:** `{ id, status: "pending", createdAt }`
+
+**Errors:**
+- 422 — below price floor
+- 409 — duplicate nonce
+- 403 — read-scope token
+
+---
+
+### `haszno proposals approve [--ids <id,...>]` _(legacy key only)_
 
 Approve proposals. **Write — prompts for confirmation.**
+**Per-shop Bearer tokens return 403.** Use the web UI at haszno.com/app/javaslatok instead.
 Omit `--ids` to approve all pending proposals.
 The command prints the `batchId` — save it in case rollback is needed.
 
 ---
 
-### `haszno proposals reject --ids <id,...>`
+### `haszno proposals reject --ids <id,...>` _(legacy key only)_
 
 Reject specific proposals. **Write — prompts for confirmation.**
+**Per-shop Bearer tokens return 403.**
 
 ---
 
-### `haszno proposals rollback --batch <batchId>`
+### `haszno proposals rollback --batch <batchId>` _(legacy key only)_
 
 Roll back an approved batch (restore previous prices). **Write — prompts for confirmation.**
+**Per-shop Bearer tokens return 403.**
 
 ---
 
