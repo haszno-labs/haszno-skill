@@ -86,7 +86,10 @@ Haszno (haszno.com) is a Hungarian SaaS that automates dropshipping pricing. Thi
 teaches AI agents how to use `@haszno/mcp` and the `haszno` CLI safely.
 
 Detailed references live in `references/`:
-- [`references/tools.md`](references/tools.md) — full MCP tool catalogue
+- [`references/authentication.md`](references/authentication.md) — all credential modes with reach table
+- [`references/endpoints.md`](references/endpoints.md) — API endpoints accessible to per-shop Bearer tokens
+- [`references/error-codes.md`](references/error-codes.md) — error codes, recovery steps, 401/403 diagnosis
+- [`references/tools.md`](references/tools.md) — full MCP tool catalogue (with per-tool credential scope)
 - [`references/commands.md`](references/commands.md) — full CLI command catalogue
 - [`references/recipes.md`](references/recipes.md) — step-by-step workflow recipes
 
@@ -94,19 +97,47 @@ Detailed references live in `references/`:
 
 ## Quick-start
 
-### Authentication
+### Authentication — which credential do I have?
+
+**Use this table first.** The credential type determines what operations are available.
+
+| Credential | Format | Env var | What it unlocks |
+|---|---|---|---|
+| **Per-shop Bearer token** | `haszno_<43 chars>` | `HASZNO_API_TOKEN` (preferred) or `HASZNO_API_KEY` | Agent routes (products, orders, proposals), marketplace (`haszno_shop_*`), identity |
+| **Legacy API key** | any other string | `HASZNO_API_KEY` | Everything: account, settings, rules, catalog, feeds, peers, blog, plus all of the above |
+| **HTTP Basic** | `user:pass` | `HASZNO_BASIC` | Demo dataset on haszno.com; full access on self-hosted |
+| **Session cookie** | — | — | Human-only: approve/reject proposals, billing, team, GDPR |
 
 ```bash
-export HASZNO_API_URL=https://haszno.com   # alapértelmezett
-export HASZNO_API_KEY=your-api-key                  # Bearer token (preferred)
-# Silent fallback — the old names are also accepted:
-# export ARFUTAR_API_URL=...  export ARFUTAR_API_KEY=...
-# Config dir: ~/.config/haszno  (falls back to ~/.config/arfutar if present)
-# OR for demo HTTP Basic fallback:
-export HASZNO_BASIC="user:pass"
+# Per-shop Bearer token (recommended for agents):
+export HASZNO_API_TOKEN=haszno_xxxxxxxxxxxxxxxxxxxx   # preferred new var
+# HASZNO_API_KEY also works; HASZNO_API_TOKEN takes precedence
+
+# Legacy API key (self-hosted or full access):
+export HASZNO_API_KEY=your-legacy-key
+
+# Demo HTTP Basic:
+export HASZNO_BASIC="demo:password"
+
+# Silent fallback (accepted without warning):
+# ARFUTAR_API_KEY, ~/.config/arfutar/config.json
 ```
 
 Never print, log, or echo credentials.
+
+**Credential reach table:**
+
+| Operation | Per-shop token | Legacy key |
+|---|---|---|
+| Check identity (`GET /api/v1/auth/me`) | ✅ | ✅ |
+| List products + margins (`GET /api/v1/agent/products`) | ✅ | ✅ |
+| List last 20 orders (`GET /api/v1/agent/orders`) | ✅ | ✅ |
+| List / submit proposals | ✅ (submit = write-scope) | ✅ |
+| **Approve / reject / rollback proposals** | ❌ 403 (human via web UI) | ✅ |
+| All `haszno_shop_*` marketplace tools | ✅ | ✅ |
+| Account stats / settings / automation rules | ❌ | ✅ |
+| Import list, feeds, catalog management | ❌ | ✅ |
+| Billing, team, GDPR | ❌ | ❌ (session cookie only) |
 
 ### Via MCP (Claude Desktop / Claude Code)
 
@@ -168,55 +199,126 @@ so `haszno login` (or setting `HASZNO_API_KEY`) once configures both.
 
 ---
 
-## Safety rules — read before any write
+## Hard rules — read before ANY call
 
-1. **Read-only by default.** Use read tools and list commands freely, without asking.
-2. **Every write requires `confirm: true` / explicit user confirmation.**
-   Writes: approve, reject, rollback, run rule, list/unlist product, apply prices,
-   import feed, update settings, ship order, import-list push, peer invite create,
-   peer invite accept.
-3. **Check the automation kill switch first.**
-   Before any bulk write, call `haszno_automation_get` (MCP) or
-   `haszno rules automation` (CLI) and confirm `automationPaused` is `false`.
-   If `true`, do not approve proposals or run rules — report the status to the user.
-4. **Rollback before escalating.**
-   If an approved proposal batch looks wrong, call `haszno_proposals_rollback`
-   with the `batchId` before anything else.
-5. **Never pass negative prices.** All prices are positive whole forints (gross).
-6. **Partner catalogue is aggregated.** The `supplier-view` endpoint returns
-   aggregated reseller stats only — it must not expose individual shop margins.
-7. **Demo environment is read-mostly.** Read-only GETs against the demo URL are
-   fine for smoke tests. Never POST writes to the demo unless the user explicitly
-   asks and confirms this is intentional.
-8. **Agent actions are propose-only.** An agent (Bearer `haszno_…` token) may
-   call `POST /api/agent/actions` to propose an action, and `POST …/:id/reject`.
-   It may NOT call `/approve`, `/undo`, or `PUT /api/agent/autopilot` — these
-   return 403. The owner approves in the UI at `/app/napi-jelentes`.
-9. **Antitrust rule.** Every report item and action proposal must be computed
-   from THIS shop's own data plus publicly available market prices only. Never
-   use or expose another reseller's prices, costs, or rules — even indirectly.
+1. **Proposals are ALWAYS pending — a human approves, never the agent.**
+   `POST /api/v1/agent/proposals` (or `haszno_proposals_propose`) always returns
+   `status: "pending"`. No credential lets an agent approve a proposal.
+   `haszno_proposals_approve`, `haszno_proposals_reject`, and `haszno_proposals_rollback`
+   return `403 "Az ügynök-token nem hagyhat jóvá árjavaslatokat."` for per-shop Bearer
+   tokens — permanently, by design. Direct the user to haszno.com/app/javaslatok.
+
+2. **Price floor is absolute.** A proposal's `proposedPriceGross` must be ≥
+   `recommended.floorGross` from `GET /api/v1/agent/products`. Submitting below the
+   floor → 422. Never round down to get under the floor.
+
+3. **Only your shop's data.** Every agent route is scoped to the token's `shopId`.
+   Attempting to read or modify another shop's data is not possible — 404 is returned
+   for products/orders belonging to other shops (indistinguishable from "not found").
+
+4. **Never claim access the token does not have.** If the user asks to approve
+   proposals, run rules, or manage billing with a per-shop Bearer token, explain
+   clearly that those require the web UI or a legacy key. Do not attempt the call.
+
+5. **Read-only by default.** Call read tools freely, without asking. For writes:
+   show the user what will change, get explicit confirmation, then act.
+
+6. **Every write requires explicit confirmation.** Writes: post/edit/delete ad,
+   reserve, complete reservation, counter-offer, review, propose a price change,
+   mark sold, send message/inquiry. Use `confirm: true` only after user says yes.
+
+7. **Check the automation kill switch before bulk pricing writes (legacy key).**
+   Before approving proposals or running rules: `haszno_automation_get` →
+   `automationPaused` must be `false`. If `true`, report and stop.
+
+8. **Never pass negative prices.** All prices are positive whole forints (gross, integer).
+   `proposedPriceGross` must be ≥ 1 (enforced by API; `floorGross` is typically higher).
+
+9. **Partner catalogue is aggregated.** `haszno_catalog_supplier_view` returns
+   aggregated stats only — do not infer or expose individual shop margins.
+
+10. **Nonce must be unique per proposal.** Reusing a nonce returns 409. If the agent
+    retries after a network error, check `haszno_proposals_list` first before submitting
+    again — the original may have been created.
+
+11. **Agent actions are propose-only.** An agent (Bearer `haszno_…` token) may
+    call `POST /api/agent/actions` to propose an action, and `POST …/:id/reject`.
+    It may NOT call `/approve`, `/undo`, or `PUT /api/agent/autopilot` — these
+    return 403. The owner approves in the UI at `/app/napi-jelentes`.
+
+12. **Antitrust rule.** Every report item and action proposal must be computed
+    from THIS shop's own data plus publicly available market prices only. Never
+    use or expose another reseller's prices, costs, or rules — even indirectly.
+
+13. **Rollback before escalating (legacy key).** If an approved proposal batch looks
+    wrong, call `haszno_proposals_rollback` with the `batchId` before anything else.
+
+14. **Demo environment is read-mostly.** Read-only GETs against the demo URL are
+    fine for smoke tests. Never POST writes to the demo unless the user explicitly
+    asks and confirms this is intentional.
 
 ---
 
 ## Safe workflows
 
-### 1 — Find loss-making products
+### 1 — Check products and margins (per-shop Bearer token)
 
-Goal: identify products where the current price yields a negative or below-minimum margin.
+Goal: list products and find ones with low margins.
 
 ```
-MCP:  haszno_account_get_stats          → shows stats.losing count
-      haszno_products_list (all=true)   → filter where current.marginPct < minMarginPct
-CLI:  haszno account stats --json
-      haszno products list --all --json | jq '[.[] | select(.current.marginPct < 10)]'
+HTTP:  GET https://haszno.com/api/v1/agent/products
+       Authorization: Bearer haszno_...
+       → array of { id, sku, name, listed, priceGross, stock, supplierName,
+                     current: {marginNet, marginPct}, recommended: {priceGross, floorGross} }
+
+CLI:   haszno products list --all --json
+       | jq '[.[] | select(.current.marginPct < 10) | {id,name,sku,margin:.current.marginPct,recommended:.recommended.priceGross}]'
 ```
 
-Typical output fields to report: `id`, `name`, `sku`, `current.marginPct`,
-`recommended.priceGross`. Never auto-fix — show the list and ask the user.
+Fields: `recommended.floorGross` is the absolute price floor (never submit below this).
+Report to user: `name | SKU | current margin% | recommended price | floor`. Never auto-fix.
 
-### 2 — Review and approve price proposals
+### 2 — Submit a price proposal (per-shop Bearer token, write-scope required)
 
-Goal: review pending AI price proposals, confirm with the user, then approve or reject.
+Goal: propose a new price for a product. The proposal is always PENDING — a human approves.
+
+```
+1. Read products:  GET /api/v1/agent/products  → note id, recommended.floorGross
+2. Choose a price: must be ≥ recommended.floorGross; integer gross HUF
+3. Compose reason: 1–500 chars, e.g. "Piaci minimumhoz igazítás: versenytárs 4 490 Ft"
+4. Generate nonce: UUID or timestamp-based, e.g. "2026-11-14T15:30:00Z-prod42"
+
+5. MCP:  haszno_proposals_propose(
+           productId=42, proposedPriceGross=4490, reason="...", nonce="..."
+         )
+   HTTP: POST /api/v1/agent/proposals
+         Content-Type: application/json
+         Authorization: Bearer haszno_...
+         { productId: 42, proposedPriceGross: 4490, reason: "...", nonce: "..." }
+
+6. Response: { id, status: "pending", createdAt }
+   → Tell the user: "Javaslat beküldve (#42). Jóváhagyáshoz: haszno.com/app/javaslatok"
+```
+
+**Never call `haszno_proposals_approve` with a shop token — it returns 403.**
+
+### 3 — Review recent orders (per-shop Bearer token)
+
+Goal: see the last 20 orders and check for errors.
+
+```
+HTTP:  GET https://haszno.com/api/v1/agent/orders
+       Authorization: Bearer haszno_...
+       → { id, externalId, customerName, status, totalGross, createdAt, items[] }
+       Status values: received | forwarded | shipped | error
+       Limit: always last 20, no pagination
+
+CLI:   haszno orders list --json | jq '[.[] | select(.status=="error")]'
+```
+
+### 4 — Review and approve price proposals (legacy key required)
+
+Goal: review pending proposals and approve or reject them. Requires a legacy API key.
 
 ```
 1. Check kill switch:   haszno_automation_get  →  automationPaused must be false
@@ -228,9 +330,9 @@ Goal: review pending AI price proposals, confirm with the user, then approve or 
 6. Save batchId from approve response — needed for rollback if something is wrong
 ```
 
-Never approve proposals without showing the user what will change.
+**If you have only a per-shop Bearer token: skip to the web UI at haszno.com/app/javaslatok.**
 
-### 3 — Pick products to add in a category
+### 5 — Pick products to add in a category (legacy key required)
 
 Goal: browse the partner catalogue and find products worth listing.
 
@@ -246,7 +348,7 @@ Goal: browse the partner catalogue and find products worth listing.
 
 Do not list products automatically. Always confirm the shortlist first.
 
-### 4 — Push import-list items to a connected store
+### 6 — Push import-list items to a connected store (legacy key required)
 
 Goal: push staged import-list items to a connected webshop (WooCommerce, Shopify, etc.).
 
@@ -266,9 +368,20 @@ Goal: push staged import-list items to a connected webshop (WooCommerce, Shopify
 - Without `targetConnectionId` → `POST /api/import-list/push` → returns `{ pushed }` only
 Never dereference `failed`/`errors` unless `targetConnectionId` was given.
 
-### 5 — Daily dropshipping check
+### 7 — Daily dropshipping check (per-shop Bearer token variant)
 
-Goal: surface the most important issues in one pass.
+Goal: surface the most important issues in one pass, using only a per-shop token.
+
+```
+1. GET /api/v1/agent/products         → count total, filter losing (marginPct < 10)
+2. GET /api/v1/agent/proposals?status=pending  → count pending proposals
+3. GET /api/v1/agent/orders           → find any with status="error"
+```
+
+Report: "N termék, X veszteséges. Y függőben lévő javaslat. Z stuck rendelés."
+Ask which item to drill into. Direct the user to the web UI for approval.
+
+### 8 — Daily dropshipping check (legacy key variant)
 
 ```
 1. haszno_account_get_stats      → products, losing, overMarket, toFix, orders
@@ -404,8 +517,8 @@ Contact details (phone, e-mail) become visible to the other party only after acc
 | `blog` | `haszno_blog_latest` | — (public read-only) |
 | `manager` | `haszno_daily_report`, `haszno_research_brief`, `haszno_list_actions` | `haszno_post_findings` (agent findings), `haszno_propose_action` (propose only — no confirm flag; never self-approve), `haszno_withdraw_action` (withdraw own proposal) |
 | `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos`, `haszno_shop_list_messages`, `haszno_shop_list_saved_searches`, `haszno_shop_get_draft` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_reply_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation`, `haszno_shop_counter_offer`, `haszno_shop_accept_counter`, `haszno_shop_send_message`, `haszno_shop_review` _(confirm)_, `haszno_shop_save_search`, `haszno_shop_delete_saved_search`, `haszno_shop_watch_price`, `haszno_shop_import_from_url`, `haszno_shop_save_draft`, `haszno_shop_clear_draft`, `haszno_shop_remove_background` |
-| `proposals` | `list` | `approve`, `reject`, `rollback` |
-| `rules` | `list`, `list_templates`, `list_runs`, `automation_get` | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` |
+| `proposals` | `list` _(any auth)_ | `propose` _(shop token write-scope)_; `approve`, `reject`, `rollback` _(legacy key only)_ |
+| `rules` | `list`, `list_templates`, `list_runs`, `automation_get` _(legacy key)_ | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` _(legacy key)_ |
 | `orders` | `list` | `ship`, `receive` |
 | `ideas` | `list` | `fill_keywords` |
 | `feeds` | — | `import_supplier`, `import_market` |
