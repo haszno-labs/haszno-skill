@@ -166,10 +166,25 @@ Stateless Streamable HTTP MCP endpoint. Wraps agent routes and shop routes.
 **Server info:** `{ name: "haszno", version: "0.1.0" }`  
 **Public URL:** `https://haszno.com/api/v1/mcp`
 
-Tools available to per-shop Bearer tokens via this endpoint:
-- All `haszno_shop_*` tools
-- `haszno_proposals_list`, `haszno_proposals_propose`
-- `haszno_ping`, `haszno_account_configure`
+**Tool roster via this endpoint:**
+
+The endpoint calls `registerShopTools` from `@haszno/mcp/lib` (source: `api/src/mcp/routes.ts:144`).
+The `@haszno/mcp/lib` package is not present in this reference checkout, so the exact list of tool
+names registered cannot be verified here. The capability map (§3c) confirms that:
+
+- Tools that call agent routes (`/api/v1/agent/*`) enforce their scope rules via `api/src/agent/routes.ts` guards.
+- Tools that call shop routes (`/api/v1/shop/*`) enforce scope via `requireAuth`.
+- Tools that call routes blocked for per-shop tokens (approval, legacy-key-only paths) will return 403.
+
+**To discover the live tool roster**, issue a `tools/list` JSON-RPC call against the endpoint after authenticating:
+```json
+{ "jsonrpc": "2.0", "method": "tools/list", "id": 1 }
+```
+
+> **Note (unverified):** the function name `registerShopTools` and the open question from the implementer
+> suggest the registered set may be `haszno_shop_*` only. Tool names like `haszno_proposals_list`,
+> `haszno_proposals_propose`, `haszno_ping`, and `haszno_account_configure` may or may not be registered —
+> confirm with the `@haszno/mcp/lib` maintainer or via `tools/list` before relying on them.
 
 Tools that require a legacy key will return 403 when called through this endpoint with a shop token.
 

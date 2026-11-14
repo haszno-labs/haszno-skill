@@ -24,15 +24,19 @@ curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/insta
 
 **Token scope (which commands work with a per-shop Bearer token `haszno_…`):**
 
-| Command group | Per-shop token | Legacy key |
-|---|---|---|
-| `haszno shop *` | ✅ | ✅ |
-| `haszno proposals list` | ✅ | ✅ |
-| `haszno proposals propose` | ✅ write-scope | ✅ |
-| `haszno proposals approve / reject / rollback` | ❌ 403 | ✅ |
-| `haszno products list` | ✅ (via agent route) | ✅ |
-| `haszno orders list` | ✅ (via agent route, last 20) | ✅ |
-| `haszno account / rules / catalog / feeds` | ❌ | ✅ |
+> **Note:** the CLI source (`haszno-labs/haszno-cli`) is not in this reference checkout.
+> Rows marked ⚠️ are based on the API endpoint behaviour and are provisionally documented;
+> confirm with the CLI maintainer or by running the command before relying on them in production agents.
+
+| Command group | Per-shop token | Legacy key | Source |
+|---|---|---|---|
+| `haszno shop *` | ✅ | ✅ | API: `/api/v1/shop/*` passes `isPublicPath` |
+| `haszno proposals list` | ✅ | ✅ | API: `GET /api/v1/agent/proposals` |
+| `haszno proposals propose` | ⚠️ ✅ write-scope (provisional) | ✅ | API: `POST /api/v1/agent/proposals` exists; CLI command unverified |
+| `haszno proposals approve / reject / rollback` | ❌ 403 | ✅ | API: `rejectBearerOnApproval` middleware |
+| `haszno products list` | ⚠️ ✅ (provisional — via agent route) | ✅ | API: `GET /api/v1/agent/products` exists; CLI routing unverified |
+| `haszno orders list` | ⚠️ ✅ (provisional — via agent route, last 20) | ✅ | API: `GET /api/v1/agent/orders` exists; CLI routing unverified |
+| `haszno account / rules / catalog / feeds` | ❌ | ✅ | API: blocked for Bearer tokens on haszno.com |
 
 Config dir: `~/.config/haszno` (falls back to `~/.config/arfutar` if present).
 
@@ -660,17 +664,24 @@ haszno proposals list --status pending --json \
 
 ---
 
-### `haszno proposals propose --product-id <id> --price <gross> --reason <text> [--nonce <string>]` _(shop token write-scope)_
+### `haszno proposals propose --product-id <id> --price <gross> --reason <text> [--nonce <string>]` _(shop token write-scope, provisional — CLI source unverified)_
 
 Submit a new agent-generated price proposal. The proposal is always `status: "pending"` —
 a human must approve it at haszno.com/app/javaslatok. Requires a **write-scope** per-shop
 Bearer token (`haszno_` prefix).
 
+> **Provisional:** this CLI command is documented based on the API endpoint behaviour
+> (`POST /api/v1/agent/proposals`, `api/src/agent/routes.ts:192`). The CLI source is not
+> in this reference checkout; confirm with the CLI maintainer that this command exists.
+
 **Flags:**
 - `--product-id <id>` _(required)_ — from `haszno products list --json`
 - `--price <gross>` _(required)_ — proposed gross price in HUF; must be ≥ floorGross
 - `--reason <text>` _(required)_ — 1–500 chars, e.g. "piaci minimumhoz igazítás"
-- `--nonce <string>` _(optional)_ — deduplicate retries; generated automatically if omitted
+- `--nonce <string>` _(optional in CLI — generated automatically if omitted)_ — the underlying API
+  (`POST /api/v1/agent/proposals`) requires a nonce (`api/src/agent/routes.ts:211`); the CLI fills
+  one automatically when `--nonce` is not provided. When calling the API or the MCP tool directly,
+  you must supply an explicit nonce (e.g. a UUID). Reusing a nonce returns 409.
 
 **Returns:** `{ id, status: "pending", createdAt }`
 

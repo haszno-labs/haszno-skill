@@ -813,7 +813,7 @@ approve it.
 - `productId` _(integer)_ — from `GET /api/v1/agent/products`
 - `proposedPriceGross` _(integer ≥ 1)_ — must be ≥ `recommended.floorGross` from agent/products
 - `reason` _(string, 1–500 chars)_ — why this price makes sense
-- `nonce` _(string, 1–128 chars)_ — unique per request; reusing a nonce returns 409
+- `nonce` _(string, 1–128 chars, **required**)_ — unique per request; reusing a nonce returns 409. The API enforces this at the Zod schema level (`api/src/agent/routes.ts:211`); no auto-generation occurs server-side. Generate a UUID or random string before calling. The CLI (`haszno proposals propose`) generates a nonce automatically if `--nonce` is omitted; the MCP tool and direct API calls do not.
 
 **Returns:** `{ id, status: "pending", createdAt }`
 
