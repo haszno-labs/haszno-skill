@@ -1343,4 +1343,179 @@ Withdraw (reject) an agent action proposal that was created by this agent/shop. 
 
 **Returns:** `AgentAction` — updated with `status: "visszavonva"`.
 
+---
+
+## Booking (`haszno_booking_*`) _(shop token)_
+
+> All booking tools require a per-shop Bearer token (`haszno_` prefix).
+> Write tools that publish or delete require `confirm: true`. Never publish
+> without the owner's explicit go-ahead. Never invent service prices — ask.
+
+---
+
+### `haszno_booking_get_setup` _(read-only)_
+
+Return the full booking configuration: page metadata (published, slug), services,
+resources, weekly hours, exceptions, theme, and a `nextStep` hint for the agent.
+
+**Returns:**
+```ts
+{
+  page: { published: boolean, slug: string, theme: BookingTheme },
+  services: BookingService[],
+  resources: BookingResource[],
+  hours: { day: 0–6, open: string, close: string }[],
+  exceptions: { id: number, date: string, label?: string }[],
+  checklist: { services: boolean, resources: boolean, hours: boolean },
+  nextStep: string
+}
+```
+
+---
+
+### `haszno_booking_apply_setup` _(write)_
+
+Bulk-apply a booking configuration in one call. Pass `dryRun: true` to get a list of
+changes without writing. Pass `confirm: true` for a live write (required unless `dryRun`).
+
+**Always dry-run first**, show the change summary to the owner, and pass `confirm: true`
+only after they say yes.
+
+**Parameters:**
+- `setup` _(object, required)_ — partial or full configuration:
+  - `services` _(array, optional)_ — `[{ name, durationMin, priceGross, description?, bufferBeforeMin?, bufferAfterMin? }]`
+  - `resources` _(array, optional)_ — `[{ name, description? }]`
+  - `hours` _(array, optional)_ — `[{ day: 0–6, open: "HH:MM", close: "HH:MM" }]` (omit a day = closed)
+  - `theme` _(object, optional)_ — partial `BookingTheme` fields
+- `dryRun` _(boolean, optional, default false)_ — validate and return change list, do not write
+- `confirm` _(boolean, required for live write)_ — must be `true`; omit to preview
+
+**Returns:** `{ changes: string[], applied: boolean }`
+
+---
+
+### `haszno_booking_set_theme` _(write)_
+
+Partial update of the booking page theme. Only the fields you pass are changed.
+
+**Parameters (all optional):**
+- `accent` _(string)_ — hex colour, e.g. `"#1a7a5e"`
+- `background` _(`"light" | "soft" | "dark"`)_
+- `radius` _(`"sharp" | "soft" | "round"`)_
+- `font` _(`"inter" | "serif" | "rounded"`)_
+- `logoUrl` _(string)_ — `https://…` or `""` to remove
+- `coverUrl` _(string)_ — `https://…` or `""` to remove
+- `headline` _(string, max 80 chars)_
+- `buttonLabel` _(string, max 40 chars)_
+
+**Returns:** updated `BookingTheme`.
+
+---
+
+### `haszno_booking_upsert_service` _(write)_
+
+Create or update a service. The tool first calls `GET /api/agent/booking/services`
+and matches by name (case-insensitive); if a match is found it updates, otherwise
+it creates a new service.
+
+**Parameters:**
+- `name` _(string, required)_
+- `durationMin` _(integer, required)_ — slot duration in minutes
+- `priceGross` _(integer ≥ 0, required)_ — gross price in HUF; never invent — ask the owner
+- `description` _(string, optional)_
+- `bufferBeforeMin` _(integer, optional)_ — prep time in minutes
+- `bufferAfterMin` _(integer, optional)_ — cleanup time in minutes
+
+**Returns:** `BookingService`
+
+---
+
+### `haszno_booking_delete_service` _(write — requires `confirm: true`)_
+
+Soft-delete a service by ID. Existing appointments are unaffected.
+
+**Parameters:**
+- `id` _(integer, required)_
+- `confirm` _(boolean)_ — must be `true`
+
+**Returns:** `{ ok: true }`
+
+---
+
+### `haszno_booking_upsert_resource` _(write)_
+
+Create or update a resource (staff member, room, equipment). Matches by name
+(case-insensitive) the same way as `haszno_booking_upsert_service`.
+
+**Parameters:**
+- `name` _(string, required)_
+- `description` _(string, optional)_
+
+**Returns:** `BookingResource`
+
+---
+
+### `haszno_booking_delete_resource` _(write — requires `confirm: true`)_
+
+Soft-delete a resource by ID.
+
+**Parameters:**
+- `id` _(integer, required)_
+- `confirm` _(boolean)_ — must be `true`
+
+**Returns:** `{ ok: true }`
+
+---
+
+### `haszno_booking_set_hours` _(write)_
+
+Replace all weekly opening hours in one call. Days absent from the array are
+treated as closed.
+
+**Parameters:**
+- `hours` _(array, required)_ — `[{ day: 0–6, open: "HH:MM", close: "HH:MM" }]`
+  (0 = Sunday, 1 = Monday … 6 = Saturday)
+
+**Returns:** `{ hours: [{ day, open, close }] }`
+
+---
+
+### `haszno_booking_add_closure` _(write)_
+
+Add a one-day closure or holiday exception.
+
+**Parameters:**
+- `date` _(string, required)_ — `"YYYY-MM-DD"`
+- `label` _(string, optional)_ — e.g. `"Szenteste"`
+
+**Returns:** `{ id: number, date: string, label?: string }`
+
+---
+
+### `haszno_booking_publish` _(write — requires `confirm: true`)_
+
+Publish or unpublish the booking page. The server returns 422 if no service,
+resource, or opening hours have been configured.
+
+**Always show the checklist from `haszno_booking_get_setup` first** and confirm
+with the owner before publishing.
+
+**Parameters:**
+- `published` _(boolean, required)_ — `true` = go live, `false` = take offline
+- `confirm` _(boolean)_ — must be `true`
+
+**Returns:** `{ published: boolean, slug: string }`
+
+---
+
+### `haszno_booking_list_appointments` _(read-only)_
+
+List booked appointments in a date range.
+
+**Parameters:**
+- `from` _(string, required)_ — `"YYYY-MM-DD"`
+- `to` _(string, required)_ — `"YYYY-MM-DD"`
+
+**Returns:** `{ appointments: [{ id, serviceName, resourceName, customerName, startsAt, endsAt, status }] }`
+
 **Note:** This calls `POST /api/agent/actions/:id/reject`. Only the action's own shop can withdraw it. Approve and undo remain the shop owner's decision in the Haszno UI.

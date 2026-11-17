@@ -1278,3 +1278,156 @@ akkor is törli a helyi konfigurációt (figyelmeztetéssel). A `tokens list` é
 session-alapú hitelesítést igényelnek — ezek csak böngészős session-nel rendelkező
 környezetben érhetők el.
 
+---
+
+## Recipe 22: Booking oldal beállítása üzleti leírásból
+
+**Goal:** an owner describes their business in plain language; the agent sets up
+a complete booking page — services, resources, opening hours, theme — and publishes
+it only after the owner explicitly approves.
+
+**Safety rules for this recipe:**
+- Never invent prices. If the owner does not mention a price, ask before continuing.
+- Never call `haszno_booking_publish` (or `haszno booking publish`) without an
+  explicit "yes" from the owner.
+- Always dry-run `haszno_booking_apply_setup` first.
+
+---
+
+### Step 1 — Read the current state
+
+```
+MCP:  haszno_booking_get_setup
+CLI:  haszno booking status --json
+```
+
+Note `checklist`, `nextStep`, and whether the page is already published.
+If it is already published, tell the owner and ask whether to continue.
+
+---
+
+### Step 2 — Draft the setup JSON from the owner's description
+
+Based on what the owner told you, draft a setup object. For anything missing or
+unclear, ask before moving on.
+
+```jsonc
+{
+  "services": [
+    {
+      "name": "Fodrászat — rövid haj",
+      "durationMin": 45,
+      "priceGross": 4500,     // ask the owner if not stated
+      "description": "Mosás, vágás, szárítás"
+    }
+  ],
+  "resources": [
+    { "name": "Anna" },
+    { "name": "1-es szék" }
+  ],
+  "hours": [
+    { "day": 1, "open": "09:00", "close": "18:00" },
+    { "day": 2, "open": "09:00", "close": "18:00" },
+    { "day": 3, "open": "09:00", "close": "18:00" },
+    { "day": 4, "open": "09:00", "close": "18:00" },
+    { "day": 5, "open": "09:00", "close": "16:00" }
+    // Sunday (0) and Saturday (6) are omitted → closed
+  ],
+  "theme": {
+    "accent": "#1a7a5e",
+    "background": "soft",
+    "radius": "round",
+    "font": "inter",
+    "headline": "Foglaljon időpontot online",
+    "buttonLabel": "Foglaljon most"
+  }
+}
+```
+
+Show the full draft to the owner and ask if the services, prices, hours and
+theme look right. Do not proceed until they confirm the draft.
+
+---
+
+### Step 3 — Dry-run apply
+
+```
+MCP:  haszno_booking_apply_setup(setup=<draft>, dryRun=true)
+CLI:  haszno booking apply setup.json --dry-run
+```
+
+Show the returned `changes` list to the owner:
+> "A következő változásokat fogom elvégezni: …  Folytathatom?"
+
+---
+
+### Step 4 — Apply for real
+
+```
+MCP:  haszno_booking_apply_setup(setup=<draft>, confirm=true)
+CLI:  haszno booking apply setup.json --yes
+```
+
+---
+
+### Step 5 — Set theme (if theme was not part of the bulk apply)
+
+```
+MCP:  haszno_booking_set_theme(accent="#1a7a5e", background="soft", ...)
+CLI:  haszno booking theme set --accent "#1a7a5e" --background soft --font inter \
+        --headline "Foglaljon időpontot online" --button-label "Foglaljon most"
+```
+
+---
+
+### Step 6 — Confirm before publishing
+
+Read the current checklist:
+
+```
+MCP:  haszno_booking_get_setup  → check checklist.services, .resources, .hours
+CLI:  haszno booking status --json
+```
+
+If any checklist item is `false`, report it and stop — the page cannot be published
+until all three are set up.
+
+Then show the owner the page slug and ask:
+> "A foglalási oldal elkészült. Közzétegyem? (haszno.com/book/<slug>)"
+
+**Wait for an explicit "yes" before calling publish.**
+
+---
+
+### Step 7 — Publish
+
+```
+MCP:  haszno_booking_publish(published=true, confirm=true)
+CLI:  haszno booking publish
+```
+
+Report the live URL to the owner:
+> "Az időpontfoglaló oldal elérhető: haszno.com/book/<slug>"
+
+---
+
+### CLI one-liner (dry-run → apply → publish, scripted)
+
+```bash
+# Step 1: dry-run
+haszno booking apply setup.json --dry-run
+
+# Step 2: apply (after owner confirmation)
+haszno booking apply setup.json --yes
+
+# Step 3: set theme (optional)
+haszno booking theme set --accent "#1a7a5e" --background soft \
+  --headline "Foglaljon időpontot online" --button-label "Foglaljon most"
+
+# Step 4: check status
+haszno booking status --json | jq '{published, checklist}'
+
+# Step 5: publish (only after owner confirms)
+haszno booking publish
+```
+

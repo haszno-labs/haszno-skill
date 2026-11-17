@@ -8,6 +8,9 @@ description: >
   post agent findings to the daily report, propose agent actions, and manage
   autopilot settings. Also covers the Haszno Shop free marketplace: post ads,
   search and reserve items, manage incoming reservations and inquiries.
+  Also covers Haszno Booking (időpontfoglaló): set up and manage appointment
+  booking pages for businesses — services, resources, opening hours, closures,
+  theme, and publishing.
   Use when the user mentions Haszno, dropshipping pricing, price proposals
   (árajánlat), automation rules (automatika), product margins, Árukereső feed,
   supplier catalogue, connecting a webshop (bekötés, WooCommerce, Shopify),
@@ -20,7 +23,8 @@ description: >
   meg, keress nekem, foglald le, vedd meg, approve proposals, reject proposals,
   run rule, margin check, veszteséges termékek, árazás automatizálás,
   partnerkatekógus, termékötlet, dropshipping ügynök, bolt-bekötés, barát
-  meghívása, beszállító katalógus, heti összefoglaló, napi kutatás, menedzser.
+  meghívása, beszállító katalógus, heti összefoglaló, napi kutatás, menedzser,
+  időpontfoglaló beállítása, booking oldal, szolgáltatás hozzáadása.
 triggers:
   - haszno
   - haszno.com
@@ -54,6 +58,10 @@ triggers:
   - menedzser
   - hirdetés
   - foglalás
+  - időpont
+  - időpontfoglaló
+  - appointment
+  - booking
   - eladás
   - add fel
   - hirdesd meg
@@ -516,6 +524,7 @@ Contact details (phone, e-mail) become visible to the other party only after acc
 | `peers` | `haszno_peers_invite_list` | `haszno_peers_invite_create` (confirm required), `haszno_peers_invite_accept` (confirm required) |
 | `blog` | `haszno_blog_latest` | — (public read-only) |
 | `manager` | `haszno_daily_report`, `haszno_research_brief`, `haszno_list_actions` | `haszno_post_findings` (agent findings), `haszno_propose_action` (propose only — no confirm flag; never self-approve), `haszno_withdraw_action` (withdraw own proposal) |
+| `booking` | `haszno_booking_get_setup`, `haszno_booking_list_appointments` | `haszno_booking_apply_setup` _(confirm or dryRun)_, `haszno_booking_set_theme`, `haszno_booking_upsert_service`, `haszno_booking_delete_service` _(confirm)_, `haszno_booking_upsert_resource`, `haszno_booking_delete_resource` _(confirm)_, `haszno_booking_set_hours`, `haszno_booking_add_closure`, `haszno_booking_publish` _(confirm)_ |
 | `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos`, `haszno_shop_list_messages`, `haszno_shop_list_saved_searches`, `haszno_shop_get_draft` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_reply_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation`, `haszno_shop_counter_offer`, `haszno_shop_accept_counter`, `haszno_shop_send_message`, `haszno_shop_review` _(confirm)_, `haszno_shop_save_search`, `haszno_shop_delete_saved_search`, `haszno_shop_watch_price`, `haszno_shop_import_from_url`, `haszno_shop_save_draft`, `haszno_shop_clear_draft`, `haszno_shop_remove_background` |
 | `proposals` | `list` _(any auth)_ | `propose` _(shop token write-scope)_; `approve`, `reject`, `rollback` _(legacy key only)_ |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` _(legacy key)_ | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` _(legacy key)_ |

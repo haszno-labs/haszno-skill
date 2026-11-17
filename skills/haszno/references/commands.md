@@ -1070,3 +1070,209 @@ Options:
 Calls `POST /api/agent/actions`. Returns the new `AgentAction`.
 
 **Note:** The proposed action is NOT executed immediately. Approval must happen in the Haszno UI at `/app/napi-jelentes`.
+
+---
+
+## haszno booking — Időpontfoglaló (appointment booking)
+
+> All booking commands require a valid per-shop Bearer token (`HASZNO_API_TOKEN=haszno_...`).
+> Write commands require write-scope. Never publish without the owner's explicit confirmation.
+> Never invent service prices — always ask the owner.
+
+---
+
+### `haszno booking status [--json]` _(read)_
+
+Show the current state of the booking page: published/unpublished, services, resources,
+opening hours, and a checklist of what is still needed before the page can go live.
+
+```bash
+haszno booking status --json
+```
+
+---
+
+### `haszno booking export [--json]` _(read)_
+
+Export the full booking configuration as JSON (services, resources, hours, exceptions, theme).
+Useful for backing up the setup or inspecting it before making bulk changes.
+
+```bash
+haszno booking export > booking-backup.json
+```
+
+---
+
+### `haszno booking apply <file|-> [--dry-run] [--yes]` _(write)_
+
+Apply a booking setup from a JSON file or stdin. With `--dry-run` the server validates
+the payload and returns a list of changes without writing anything.
+
+Always run `--dry-run` first, show the change list to the owner, and get an explicit
+"yes" before applying for real.
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Validate and return change list without writing |
+| `--yes` | Skip confirmation prompt (required for live write) |
+
+```bash
+# Dry-run preview:
+haszno booking apply setup.json --dry-run
+
+# Apply for real:
+haszno booking apply setup.json --yes
+
+# Pipe from stdin:
+cat setup.json | haszno booking apply - --yes
+```
+
+---
+
+### `haszno booking theme set [options]` _(write)_
+
+Update the visual theme of the booking page. All fields are optional; only the ones
+you pass are updated.
+
+| Flag | Values | Description |
+|---|---|---|
+| `--accent <hex>` | `#rrggbb` | Brand colour (hex) |
+| `--background <mode>` | `light` \| `soft` \| `dark` | Page background |
+| `--radius <mode>` | `sharp` \| `soft` \| `round` | Button/card corner radius |
+| `--font <family>` | `inter` \| `serif` \| `rounded` | Font family |
+| `--logo-url <url>` | `https://…` | Logo image URL (empty string to remove) |
+| `--cover-url <url>` | `https://…` | Hero cover image URL (empty string to remove) |
+| `--headline <text>` | max 80 chars | Headline shown on the booking page |
+| `--button-label <text>` | max 40 chars | CTA button label |
+
+```bash
+haszno booking theme set --accent "#1a7a5e" --background soft --font inter \
+  --headline "Foglaljon időpontot online" --button-label "Foglaljon most"
+```
+
+Prompts for confirmation unless `--yes` is passed.
+
+---
+
+### `haszno booking service list [--json]` _(read)_
+
+List all active services on the booking page.
+
+```bash
+haszno booking service list --json
+```
+
+---
+
+### `haszno booking service add --name <név> --duration <min> --price <Ft> [options]` _(write)_
+
+Add a new bookable service.
+
+| Flag | Required | Description |
+|---|---|---|
+| `--name <text>` | yes | Service name (shown on booking page) |
+| `--duration <min>` | yes | Duration in minutes |
+| `--price <Ft>` | yes | Price in HUF gross (integer ≥ 0; ask the owner — never invent) |
+| `--description <text>` | — | Optional short description |
+| `--buffer-before <min>` | — | Prep time before the slot (minutes) |
+| `--buffer-after <min>` | — | Cleanup time after the slot (minutes) |
+
+Prompts for confirmation. Never invent the price — ask the owner.
+
+---
+
+### `haszno booking service update <id> [options]` _(write)_
+
+Update an existing service. Only the flags you pass are changed.
+Same flags as `service add`. Prompts for confirmation.
+
+---
+
+### `haszno booking service remove <id>` _(write)_
+
+Soft-delete a service (hides it from the booking page; existing appointments are unaffected).
+Prompts for confirmation.
+
+---
+
+### `haszno booking resource list [--json]` _(read)_
+
+List all active resources (staff members, rooms, equipment).
+
+---
+
+### `haszno booking resource add --name <név> [--description <text>]` _(write)_
+
+Add a new bookable resource. Prompts for confirmation.
+
+---
+
+### `haszno booking resource update <id> [--name <név>] [--description <text>]` _(write)_
+
+Update a resource. Prompts for confirmation.
+
+---
+
+### `haszno booking resource remove <id>` _(write)_
+
+Soft-delete a resource. Prompts for confirmation.
+
+---
+
+### `haszno booking hours set <file|->` _(write)_
+
+Replace all weekly opening hours from a JSON file or stdin.
+
+The JSON must be an array of `{ day: 0–6, open: "HH:MM", close: "HH:MM" }` objects
+(0 = Sunday). Omit a day entirely to mark it as closed.
+
+```bash
+cat hours.json | haszno booking hours set -
+```
+
+Prompts for confirmation.
+
+---
+
+### `haszno booking closure add --date <YYYY-MM-DD> [--label <text>]` _(write)_
+
+Add a one-day closure or holiday exception.
+
+```bash
+haszno booking closure add --date 2026-12-24 --label "Szenteste"
+```
+
+---
+
+### `haszno booking closure remove <id>` _(write)_
+
+Remove a closure by its ID. Prompts for confirmation.
+
+---
+
+### `haszno booking publish` _(write — requires explicit owner confirmation)_
+
+Make the booking page publicly accessible. The API returns 422 if no service,
+resource, or opening hours have been configured.
+
+**Always confirm with the owner before publishing.** Show the checklist from
+`haszno booking status` first.
+
+Prompts for confirmation.
+
+---
+
+### `haszno booking unpublish` _(write — requires explicit owner confirmation)_
+
+Take the booking page offline (hides it from visitors; configuration is preserved).
+Prompts for confirmation.
+
+---
+
+### `haszno booking appointments [--from <YYYY-MM-DD>] [--to <YYYY-MM-DD>] [--json]` _(read)_
+
+List booked appointments in a date range. Both `--from` and `--to` are required.
+
+```bash
+haszno booking appointments --from 2026-11-01 --to 2026-11-30 --json
+```
