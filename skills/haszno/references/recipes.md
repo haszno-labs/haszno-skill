@@ -1669,8 +1669,7 @@ MCP:
 haszno_proposals_propose(
   productId=42,
   proposedPriceGross=5290,
-  reason="Unas admin ellenőrzés után: webshop 5 290 Ft-ot jelenít meg, Haszno-javasolt ár: 5 290 Ft.",
-  nonce="2026-11-20T10:00:00Z-prod42"
+  reason="Unas admin ellenőrzés után: webshop 5 290 Ft-ot jelenít meg, Haszno-javasolt ár: 5 290 Ft."
 )
 → { id, status: "pending" }
 ```
