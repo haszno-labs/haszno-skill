@@ -1431,3 +1431,291 @@ haszno booking status --json | jq '{published, checklist}'
 haszno booking publish
 ```
 
+---
+
+## Recipe 23 *(béta)* — Webshop-admin API nélkül: Haszno + ego-browser
+
+> **Béta / kísérleti recept.** A webshop-admin felületek HTML-struktúrája
+> platformonként és verziónként eltérő. Az itteni szelektorok útmutatóként
+> szolgálnak; ha a lépés nem sikerül, olvasd el az aktuális oldal DOM-ját
+> (`page.locator(...)`), és igazítsd a szükséges szelektort.
+
+Ez a recept bemutatja, hogyan lehet Haszno MCP-eszközöket és az **ego-browser**
+böngésző-automatizálót kombinálni olyan esetekben, amikor a webshop-admin
+felületen nincs nyilvános API (Unas, Shoprenter, WooCommerce admin) —
+például automatikus ár-szinkronizáláshoz, termékoldal-ellenőrzéshez vagy
+rendelés megjelöléséhez szállítottként.
+
+### Mikor alkalmazd
+
+- A bolt **nem adja vissza az aktuális listaárt** az API-n, ezért a Haszno
+  által ajánlott/kiszámított árat manuálisan kell a shop admin felületén beírni.
+- Meg kell győződni róla, hogy a vevői termékoldal a **helyes végfelhasználói
+  árat** jeleníti meg a változtatás után.
+- Egy megrendelés **külső logisztikai rendszerben teljesült**, és az állapotot
+  a shop admin panelben is frissíteni kell.
+
+### Kötelező alapszabályok (nem megkerülhetők)
+
+| Szabály | Részlet |
+|---|---|
+| **Csak a felhasználó saját bejelentkezése** | Az ego-browser az ügynök-profilt (live agent profile) használja, amelybe a felhasználó korábban manuálisan lépett be. Az ügynök soha nem tárolja, nem adja tovább és nem gépeli be a jelszót. |
+| **Egy ego-futás = egy feladat** | Minden összetett, több lépéses feladatot (olvasás + módosítás + ellenőrzés) egyetlen `taskSpaces.run(...)` blokkban végezz el. Ne nyiss külön futásokat ugyanahhoz a munkafolyamathoz — a bejelentkezett állapot megosztott, az ár-szinkronizálás és az ellenőrzés együtt hajtandó végre. |
+| **Megerősítés minden írás előtt** | Mielőtt bármit módosítasz a shop admin felületén, mutasd meg a felhasználónak pontosan mit fogsz megváltoztatni (SKU, régi ár → új ár), és csak explicit "igen" után lépj tovább. |
+| **Soha ne tárold a jelszavakat** | Jelszót, session cookie-t vagy admin tokent ne mentsd semmilyen fájlba, változóba vagy naplóba. A `~/.config/haszno` csak a Haszno API tokent tárolja. |
+| **Mértékletes automatizálás** | Egyszerre legfeljebb 20 termék árát módosítsd; ennél több esetén szünetet tarts (1–2 s az egyes mentések között), hogy elkerüld az admin felület blokkolását. |
+| **Árhatár soha nem sérülhet** | A Haszno `haszno_products_list` visszaadja a `recommended.floorGross` értéket. Ha a javasolt ár ez alá esne, ne hajtsd végre a módosítást — irányítsd a felhasználót a haszno.com oldalra manuális döntésre. |
+| **Minden bolt a saját árszabálya szerint áraz** | Soha ne olvasd be vagy használd fel más bolt árát, szabályát vagy margóját inputként. Minden ár a saját bolt `haszno_products_list` adataiból és nyilvánosan elérhető piaci adatokból számolódik. Kerüld az „összehangolt", „közös ár" vagy „mind a boltokat együtt árazzuk" jellegű megfogalmazásokat. |
+
+---
+
+### A. feladattípus — Haszno-ajánlott ár kiírása a shop adminba
+
+Ez a leggyakoribb eset: a Haszno automata árazó kiszámolt egy javasolt árat,
+a bolt admin felületén azonban nincs webhook vagy push-API, ezért az ügynök
+kézzel viszi be az értéket.
+
+#### 1. lépés — Javasolt árak lekérése Hasznóból
+
+```
+MCP:
+haszno_products_list(all=true)
+→ [ { id, sku, name, listed, priceGross,
+      recommended: { priceGross, floorGross },
+      current: { marginPct } } ]
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/products.ts:54`)
+
+Szűrd azokra, amelyeknél `recommended.priceGross != priceGross` — ezek azok,
+amelyekre eltérés van. Mutasd meg a listát a felhasználónak, és kérj megerősítést.
+
+> "A következő termékek árát kellene frissíteni az Unas adminban:
+>  [sku] — jelenlegi: 4 990 Ft, javasolt: 5 290 Ft (határ: 4 100 Ft).
+>  Elvégezzem a módosítást?"
+
+#### 2. lépés — Felhasználó megerősítése után ego-browser futtatás
+
+**Fontos:** az ego-browser az ügynök-profilt (live agent profile) használja, amelybe
+a felhasználó manuálisan lépett be. Soha ne add meg a jelszót a scriptben.
+
+```bash
+ego-browser nodejs <<'EOF'
+// Minden módosítás + ellenőrzés egy taskSpaces.run-ban
+await taskSpaces.run('ar-szinkronizalas-unas', async (task) => {
+  page.setDefaultTimeout(12000)
+
+  // ---- Unas: termék megnyitása SKU alapján ----
+  await page.goto('https://unas.hu/admin/termekek', { waitUntil: 'networkidle' })
+
+  // Keresés SKU-ra (az aktuális Unas szelektor — frissítsd, ha eltér)
+  await page.fill('input[name="search"]', 'SKU-001')
+  await page.press('input[name="search"]', 'Enter')
+  await page.waitForSelector('table.product-list tbody tr:first-child')
+
+  await page.click('table.product-list tbody tr:first-child a.edit-link')
+  await page.waitForSelector('input[name="price"]')
+
+  // Régi ár kiolvasása (ellenőrzéshez)
+  const regiAr = await page.inputValue('input[name="price"]')
+  console.log('Jelenlegi ár:', regiAr)
+
+  // Csak akkor módosít, ha tényleg eltér
+  if (regiAr !== '5290') {
+    await page.fill('input[name="price"]', '5290')
+    await page.click('button[type="submit"]')
+    await page.waitForSelector('.flash-success, .save-ok')
+    console.log('Ár frissítve: 5290 Ft')
+  } else {
+    console.log('Nincs változás szükséges.')
+  }
+})
+EOF
+```
+
+> **Shoprenter** esetén a bejelentkezési URL és az ár-mező neve eltér:
+> `https://<bolt>.shoprenter.hu/admin`, ármező: `input#product_price`.
+> **WooCommerce** esetén: `https://<bolt>/wp-admin/post.php?post=<id>&action=edit`,
+> ármező: `input#_regular_price`.
+
+#### 3. lépés — Termékoldal ellenőrzése
+
+Az ár-módosítás után ellenőrizd, hogy a vevői oldal valóban a frissített árat
+mutatja (nem cache-elt értéket).
+
+```bash
+ego-browser nodejs <<'EOF'
+await taskSpaces.run('ar-ellenorzes', async (task) => {
+  page.setDefaultTimeout(10000)
+
+  await page.goto('https://unas.hu/termek/sku-001', { waitUntil: 'networkidle' })
+
+  // Cache elkerülése: kemény újratöltés
+  await page.evaluate(() => location.reload(true))
+  await page.waitForLoadState('networkidle')
+
+  const arSzoveg = await page.textContent('.product-price, [itemprop="price"], .price')
+  console.log('Vevői oldalon látható ár:', arSzoveg)
+  // Ellenőrzés: tartalmaz-e "5 290" vagy "5290" értéket
+})
+EOF
+```
+
+---
+
+### B. feladattípus — Rendelés megjelölése szállítottként a shop admin felületén
+
+Ha a futar visszaigazolta a kiszállítást, de a webshop admin-ja nem kap automatikus
+értesítést, az ügynök megjelöli a rendelést "szállítva" állapotúnak a Haszno
+rendszerben és a shop admin felületén is.
+
+#### 1. lépés — Rendelési adatok lekérése
+
+```
+MCP:
+haszno_orders_list(status="forwarded")
+→ [ { id, externalId, customerName, address, status, totalGross,
+      supplierOrderId, trackingNumber } ]
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/orders.ts:52`)
+
+Ha már van `trackingNumber`, folytasd a 2. lépéssel. Ha nincs, kérdezd meg
+a felhasználótól a nyomkövetési számot.
+
+Ha részletek kellenek (pl. tételek, eseménynap):
+
+```
+MCP:
+haszno_orders_get(id=<id>)
+→ Order { ..., items[], events[] }
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/orders.ts:103`)
+
+#### 2. lépés — Felhasználó megerősítése
+
+Mutasd meg: "A #`<externalId>` rendelést (vevő: `<customerName>`) szállítottnak jelölöm.
+Nyomkövetési szám: `<trackingNumber>`. Megerősíted?"
+
+#### 3. lépés — Állapot frissítése Hasznoban
+
+```
+MCP:
+haszno_orders_ship(id=<id>, confirm=true)
+→ Order { ..., status: "shipped" }
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/orders.ts:138`)
+
+#### 4. lépés — Állapot frissítése a shop admin felületén (ego-browser)
+
+```bash
+ego-browser nodejs <<'EOF'
+await taskSpaces.run('rendeles-szallitva-unas', async (task) => {
+  page.setDefaultTimeout(12000)
+
+  // Unas: rendelések listája — keresés externalId-re
+  await page.goto('https://unas.hu/admin/rendelesek', { waitUntil: 'networkidle' })
+  await page.fill('input[name="order_id"]', '12345')    // externalId
+  await page.press('input[name="order_id"]', 'Enter')
+  await page.waitForSelector('table.order-list tbody tr:first-child')
+
+  await page.click('table.order-list tbody tr:first-child a.edit-link')
+  await page.waitForSelector('select[name="status"]')
+
+  // Állapot: "szállítva" / "shipped"
+  await page.selectOption('select[name="status"]', 'shipped')
+
+  // Nyomkövetési szám kitöltése, ha van mező
+  const trackingInput = page.locator('input[name="tracking_number"]')
+  if (await trackingInput.count() > 0) {
+    await trackingInput.fill('GLS1234567890HU')
+  }
+
+  await page.click('button[type="submit"]')
+  await page.waitForSelector('.flash-success, .save-ok')
+  console.log('Rendelés állapota: szállítva. Nyomkövetési szám rögzítve.')
+})
+EOF
+```
+
+---
+
+### C. feladattípus — Javasolt ár előzetes ellenőrzése + árazási javaslat
+
+Ha az ügynöknek nincs közvetlen ár-írási joga a boltba (pl. az ár-módosítás
+emberi jóváhagyáshoz kötött), akkor először árazási javaslatot tesz, majd
+ego-browserrel ellenőrzi a termékoldalt.
+
+#### 1. lépés — Javasolt árak ellenőrzése, árhatár validálása
+
+```
+MCP:
+haszno_products_list(all=true)
+→ szűrd: recommended.priceGross != priceGross AND recommended.priceGross >= recommended.floorGross
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/products.ts:54`)
+
+**Árhatár-ellenőrzés (kötelező):**
+Ha `recommended.priceGross < recommended.floorGross`, NE küldj javaslatot —
+irányítsd a felhasználót kézi döntésre.
+
+#### 2. lépés — Árajánlat beküldése (függőben marad, humán jóváhagyás szükséges)
+
+```
+MCP:
+haszno_proposals_propose(
+  productId=42,
+  proposedPriceGross=5290,
+  reason="Unas admin ellenőrzés után: webshop 5 290 Ft-ot jelenít meg, Haszno-javasolt ár: 5 290 Ft."
+)
+→ { id, status: "pending" }
+```
+
+(Forrás: `haszno-labs/haszno-mcp src/tools/proposals.ts:350`)
+
+Az ügynök soha nem hagyja jóvá saját javaslatát. Irányítsd a felhasználót:
+"Javaslat beküldve (#42). Jóváhagyáshoz: haszno.com/app/javaslatok"
+
+#### 3. lépés — Termékoldal ellenőrzése ego-browserrel
+
+```bash
+ego-browser nodejs <<'EOF'
+await taskSpaces.run('termekoldal-check', async (task) => {
+  page.setDefaultTimeout(10000)
+
+  await page.goto('https://mybolt.hu/termek/testTermek')
+  await page.evaluate(() => location.reload(true))
+  await page.waitForLoadState('networkidle')
+
+  const ar = await page.textContent('.product-price, [itemprop="price"]')
+  const kepUrl = await page.getAttribute('img.product-image', 'src')
+
+  console.log(JSON.stringify({ ar, kepUrl }))
+})
+EOF
+```
+
+---
+
+### Összefoglalás — mikor melyik kombinációt alkalmazd
+
+| Feladat | Haszno MCP eszközök | ego-browser feladata |
+|---|---|---|
+| Ár szinkronizálása Unas/Shoprenter adminba | `haszno_products_list` | Navigálás + ár-mező kitöltése + mentés |
+| Termékoldal árellenőrzés | `haszno_products_list` | Oldal megnyitása + ár szöveg kiolvasása |
+| Rendelés megjelölése szállítottként | `haszno_orders_list`, `haszno_orders_get`, `haszno_orders_ship` | Rendelés keresése + állapot + nyomkövetési szám |
+| Javasolt ár + ellenőrzés | `haszno_products_list`, `haszno_proposals_propose` | Termékoldal megnyitása + ár validálása |
+
+### Haszno MCP eszközök — forrás-referenciák (haszno-labs/haszno-mcp)
+
+| Eszköz | Fájl:sor |
+|---|---|
+| `haszno_products_list` | `src/tools/products.ts:54` |
+| `haszno_orders_list` | `src/tools/orders.ts:52` |
+| `haszno_orders_get` | `src/tools/orders.ts:103` |
+| `haszno_orders_ship` | `src/tools/orders.ts:138` |
+| `haszno_proposals_propose` | `src/tools/proposals.ts:350` |
+| `haszno_proposals_list` | `src/tools/proposals.ts:53` |
