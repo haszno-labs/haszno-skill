@@ -99,7 +99,7 @@ Detailed references live in `references/`:
 - [`references/error-codes.md`](references/error-codes.md) — error codes, recovery steps, 401/403 diagnosis
 - [`references/tools.md`](references/tools.md) — full MCP tool catalogue (with per-tool credential scope)
 - [`references/commands.md`](references/commands.md) — full CLI command catalogue
-- [`references/recipes.md`](references/recipes.md) — step-by-step workflow recipes
+- [`references/recipes.md`](references/recipes.md) — step-by-step workflow recipes (Recipe 23 *(béta)*: Webshop-admin API nélkül: Haszno + ego-browser)
 
 ---
 
