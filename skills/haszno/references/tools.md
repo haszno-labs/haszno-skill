@@ -5,6 +5,10 @@ Write tools that make significant or irreversible changes require `confirm: true
 those tools are marked explicitly below. For all other write tools the parameter is
 absent; the agent must still get explicit user confirmation before calling them.
 
+> **Prefer a typed tool.** Use `haszno_api_list` / `haszno_api_describe` / `haszno_api_call`
+> only for endpoints not covered by a named tool. See the discovery workflow in
+> [`references/agent-api-discovery.md`](agent-api-discovery.md).
+
 ## Credential scope legend
 
 Each tool section is marked with the minimum credential required:
@@ -1519,3 +1523,406 @@ List booked appointments in a date range.
 **Returns:** `{ appointments: [{ id, serviceName, resourceName, customerName, startsAt, endsAt, status }] }`
 
 **Note:** This calls `POST /api/agent/actions/:id/reject`. Only the action's own shop can withdraw it. Approve and undo remain the shop owner's decision in the Haszno UI.
+
+---
+
+## Generic API tools _(shop token or legacy key)_
+
+These three tools give access to any Haszno API route without a new MCP release.
+**Always prefer a typed tool when one exists** (see decision tree in `agent-api-discovery.md`).
+
+---
+
+### `haszno_api_list` _(read-only — any auth)_
+
+Search the live API route registry. Returns method, path, summary, tag, and risk.
+
+**Parameters:**
+- `query` _(string, optional)_ — keyword in path, summary, or tag
+- `tag` _(string, optional)_ — filter by API tag (first segment after `/api/`)
+- `risk` _(`read` | `write` | `confirm` | `blocked`, optional)_
+- `limit` _(integer 1–200, default 50)_
+
+**Returns:** `{ routes: [{method, path, summary, tag, risk}], total, shown, hasMore }`
+
+---
+
+### `haszno_api_describe` _(read-only — any auth)_
+
+Full details for one route: path params, body/query schemas, risk, and risk note.
+
+**Parameters:**
+- `method` _(string)_ — HTTP method, e.g. `GET`, `POST`
+- `path` _(string)_ — path template from `haszno_api_list`, e.g. `/api/products/{id}`
+
+**Returns:** `{ method, path, summary, tag, risk, pathParameters?, bodySchema?, querySchema?, riskNote }`
+
+---
+
+### `haszno_api_call` _(risk varies — any auth)_
+
+Execute any accessible route using the caller's own token.
+
+**Risk enforcement:**
+- `blocked` → refused immediately
+- `confirm` without `confirm: true` → returns dry-run; re-call with `confirm: true` after the user confirms
+- `read`-scope token + non-GET → `403` from the in-process handler
+
+**Parameters:**
+- `method` _(string)_ — HTTP method
+- `path` _(string)_ — actual path with values, e.g. `/api/products/42`
+- `query` _(Record<string,string>, optional)_
+- `body` _(unknown, optional)_
+- `confirm` _(boolean, optional)_ — required for `confirm`-risk routes
+
+**Returns:** `{ status, ok, data, truncated?, total?, truncationNote? }`
+Large list responses are truncated to the first 20 items.
+
+---
+
+## Typed orders, returns, coupons, and shop settings _(shop token)_
+
+These tools call the new orders/settings API layer. They work with a per-shop Bearer
+token (`haszno_` prefix) and do NOT require a legacy key.
+
+> Returns/warranty **write** operations (approve, refund) require `x-admin-token` and are
+> not exposed here — those are platform-admin actions.
+
+---
+
+### `haszno_list_orders` _(read-only)_
+
+Browse recent orders. Returns up to 50, truncated.
+
+**Parameters:**
+- `status` _(string, optional)_ — `received | forwarded | shipped | error | cancelled | rejected | pending_approval`
+- `cats` _(string, optional)_ — comma-separated supplier category keys
+
+**Returns:** `{ orders, total, truncated }`
+Each order includes: `id, externalId, customerName, customerEmail, address, status,
+supplierOrderId, trackingNumber, totalGross, paymentMethod, codRisk, createdAt,
+forwardingStartedAt, items[{name, sku, qty, priceGross}]`.
+
+---
+
+### `haszno_ship_order` _(write)_
+
+Mark an order as shipped. Idempotent.
+
+**Parameters:** `id` _(integer)_, `trackingNumber` _(string, optional)_
+
+---
+
+### `haszno_approve_order` _(write — confirm required)_
+
+Approve a `pending_approval` order and forward it to the supplier.
+Triggers stock reservation and supplier notification. Confirm-risk.
+
+**Parameters:** `id` _(integer)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_reject_order` _(write — confirm required)_
+
+Reject a `pending_approval` order and notify the customer. Confirm-risk.
+
+**Parameters:** `id` _(integer)_, `reason` _(string, optional)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_cancel_order` _(write — confirm required)_
+
+Cancel an order. May e-mail the customer. Confirm-risk.
+
+**Parameters:** `id` _(integer)_, `reason` _(string, optional)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_get_approval_threshold` _(read-only)_
+
+Read the per-shop manual-approval threshold (orders above this amount are held as `pending_approval`).
+
+**Returns:** `{ thresholdGross: number | null }`
+
+---
+
+### `haszno_set_approval_threshold` _(write)_
+
+Set or clear the manual-approval threshold.
+
+**Parameters:** `thresholdGross` _(number | null)_
+
+---
+
+### `haszno_list_returns` _(read-only)_
+
+List return/withdrawal requests for this shop. Returns up to 50.
+
+**Returns:** `{ returns, total, truncated }`
+Each return: `id, orderId, type, status, reason, createdAt`.
+
+---
+
+### `haszno_get_return` _(read-only)_
+
+Get a single return/withdrawal request.
+
+**Parameters:** `id` _(integer)_
+
+---
+
+### `haszno_list_warranty_claims` _(read-only)_
+
+List warranty/guarantee claims for this shop. Returns up to 50.
+
+**Returns:** `{ claims, total, truncated }`
+
+---
+
+### `haszno_get_warranty_claim` _(read-only)_
+
+Get a single warranty/guarantee claim.
+
+**Parameters:** `id` _(integer)_
+
+---
+
+### `haszno_list_coupons` _(read-only)_
+
+List coupons for this shop.
+
+**Returns:** `{ coupons }` — each with `id, code, discountType, discountValue, active, usageLimit, usageCount, expiresAt`.
+
+---
+
+### `haszno_create_coupon` _(write)_
+
+Create a new coupon.
+
+**Parameters:** `code`, `discountType` (`percent | fixed`), `discountValue`, `usageLimit?`, `expiresAt?`, `active?`
+
+---
+
+### `haszno_update_coupon` _(write)_
+
+Update a coupon's `active`, `usageLimit`, or `expiresAt`.
+
+**Parameters:** `id` _(integer)_, then any subset of `active`, `usageLimit`, `expiresAt`.
+
+---
+
+### `haszno_delete_coupon` _(write — confirm required)_
+
+Delete a coupon permanently. Confirm-risk.
+
+**Parameters:** `id` _(integer)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_get_shop_settings` _(read-only)_
+
+Read pricing rules and shipping markets for this shop.
+
+**Returns:** `{ pricingRules, shippingMarkets }` and related fields.
+
+---
+
+### `haszno_update_shop_settings` _(write)_
+
+Write pricing rules and/or shipping markets.
+
+**Parameters:** any subset of `pricingRules`, `shippingMarkets`.
+
+---
+
+### `haszno_get_notification_prefs` _(read-only)_
+
+Read e-mail notification preferences.
+
+---
+
+### `haszno_update_notification_prefs` _(write)_
+
+Update e-mail notification preferences.
+
+---
+
+### `haszno_list_shop_connections` _(read-only)_
+
+List webshop connections for this shop. Used to discover IDs for shipping rules.
+
+---
+
+### `haszno_get_shipping_rules` _(read-only)_
+
+Get shipping-fee rules for a specific shop connection.
+
+**Parameters:** `connectionId` _(integer)_
+
+---
+
+### `haszno_set_shipping_rules` _(write)_
+
+Replace shipping-fee rules for a specific shop connection.
+
+**Parameters:** `connectionId` _(integer)_, `rules` _(array)_
+
+---
+
+## Typed catalog tools — products, import-list, rules, proposals, pricing _(shop token)_
+
+> **Pricing safety (enforced by the API):** price floor is absolute; `effectiveWholesaleNet + min profit`
+> cannot be breached. Per-shop isolation: each shop's pricing uses only its own cost + its own rules +
+> public market prices. See pricing business rules in `agent-api-discovery.md`.
+
+---
+
+### `haszno_catalog_list_products` _(read-only)_
+
+Own shop's products with live margin and recommended price. Returns up to 100.
+
+**Parameters:** `all?` _(include unlisted)_, `cats?` _(supplier category keys)_, `supplier?` _(supplier IDs)_
+
+**Returns:** `{ total, truncated, products }` — each with `id, sku, name, supplierName, priceGross,
+costNet, stock, listed, current{marginPct}, recommended{priceGross, reason}, imageUrl`.
+
+---
+
+### `haszno_catalog_update_product` _(write)_
+
+Patch a product's price or market data. The API enforces the price floor.
+
+**Parameters:** `id` _(integer)_, then any subset of `priceGross`, `marketMinGross`, `marketShop`.
+
+---
+
+### `haszno_catalog_toggle_listing` _(write — confirm to unlist)_
+
+List or unlist a product. Pass `confirm: true` when `listed: false`.
+
+**Parameters:** `id` _(integer)_, `listed` _(boolean)_, `confirm?` _(required when unlisting)_
+
+---
+
+### `haszno_catalog_search_catalogue` _(read-only)_
+
+Search the supplier catalogue with filters and pagination.
+
+**Parameters:** `query?`, `supplierId?`, `category?`, `minMarginPct?`, `page?`, `limit?`
+
+**Returns:** paginated supplier products with stock, suggested retail price, and potential margin.
+
+---
+
+### `haszno_catalog_add_to_import_list` _(write)_
+
+Stage up to 200 supplier products from the catalogue.
+
+**Parameters:** `networkProductIds` _(integer[], 1–200)_
+
+---
+
+### `haszno_catalog_list_import_list` _(read-only)_
+
+Browse staged / pushed / discarded items.
+
+**Parameters:** `status?` (`varakozik | kikusdott | eldobva`), `page?`
+
+---
+
+### `haszno_catalog_push_to_shop` _(write — confirm required)_
+
+Promote staged import-list items to own shop products.
+
+**Parameters:** `ids` _(integer[])_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_discard_import_list` _(write — confirm required)_
+
+Reject staged items from the import list.
+
+**Parameters:** `ids` _(integer[])_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_list_rules` _(read-only)_
+
+List all automation rules for this shop.
+
+---
+
+### `haszno_catalog_create_rule` _(write)_
+
+Create a new automation rule.
+
+---
+
+### `haszno_catalog_update_rule` _(write)_
+
+Update an existing rule (name, enabled, trigger, conditions, etc.).
+
+**Parameters:** `id` _(integer)_, then rule fields to change.
+
+---
+
+### `haszno_catalog_delete_rule` _(write — confirm required)_
+
+Delete an automation rule.
+
+**Parameters:** `id` _(integer)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_run_rule` _(write — confirm required)_
+
+Run an automation rule manually right now.
+
+**Parameters:** `id` _(integer)_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_list_proposals` _(read-only)_
+
+List pricing proposals by status.
+
+**Parameters:** `status?` (`pending | approved | rejected | stale`)
+
+---
+
+### `haszno_catalog_approve_proposals` _(write — confirm required)_
+
+Bulk-approve pricing proposals. The API checks the price floor before approving.
+**With an API key the server returns 403 by design** (`rejectBearerOnApproval`): proposal approval
+is a human step in the UI. Use this tool only to explain that and point the owner to „Jóváhagyás”.
+
+**Parameters:** `ids` _(integer[])_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_reject_proposals` _(write — confirm required)_
+
+Reject pricing proposals.
+
+**Parameters:** `ids` _(integer[])_, `confirm` _(boolean — must be `true`)_
+
+---
+
+### `haszno_catalog_get_shop_pricing` _(read-only)_
+
+Read per-shop dynamic pricing strategy (margin target, floor, ceiling, strategy type).
+
+---
+
+### `haszno_catalog_set_shop_pricing` _(write)_
+
+Create or update the per-shop pricing strategy. Per-shop isolation: settings apply only to
+this shop's own products based on its own cost + rules.
+
+---
+
+### `haszno_catalog_reprice_shop` _(write — confirm required)_
+
+Trigger manual repricing for this shop. Runs the pricing engine immediately.
+
+**Parameters:** `confirm` _(boolean — must be `true`)_
