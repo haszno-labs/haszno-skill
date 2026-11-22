@@ -1276,3 +1276,87 @@ List booked appointments in a date range. Both `--from` and `--to` are required.
 ```bash
 haszno booking appointments --from 2026-11-01 --to 2026-11-30 --json
 ```
+
+---
+
+## `haszno api` — Generic API client _(any auth)_
+
+Fetches `GET /api/openapi.json` at runtime and exposes every route as a CLI call.
+No CLI release is needed when new endpoints appear on the server.
+
+The spec is cached for 10 minutes at `~/.config/haszno/cache/openapi.json`.
+Pass `--refresh` to bypass the cache.
+
+---
+
+### `haszno api ls [query] [--tag <tag>] [--risk <level>] [--json] [--refresh]`
+
+Search the live route registry.
+
+**Options:**
+- `query` _(positional, optional)_ — keyword in path, summary, or operationId
+- `--tag <tag>` — filter by API tag (first segment after `/api/`)
+- `--risk <level>` — `read | write | confirm | blocked`
+- `--json` — machine-readable output
+- `--refresh` — bypass the 10-minute spec cache
+
+```bash
+haszno api ls orders
+haszno api ls --tag catalog --risk read
+haszno api ls --json | jq '[.[] | select(.risk=="confirm")]'
+```
+
+Output columns (table mode): `METHOD | RISK | PATH | SUMMARY`
+
+---
+
+### `haszno api describe <METHOD> <path> [--json]`
+
+Full details for one route: path params, body/query schemas, risk level.
+
+```bash
+haszno api describe GET /api/agent/products
+haszno api describe POST /api/agent/proposals --json
+```
+
+---
+
+### `haszno api <METHOD> <path> [options]`
+
+Execute a route. `METHOD` is case-insensitive (`get`, `GET`, etc.).
+
+**Options:**
+- `--query k=v` _(repeatable)_ — query string params
+- `--data '<json>'` — request body as JSON string
+- `--data @file.json` — read body from a JSON file
+- `--yes` — skip the interactive `y/N` prompt for `confirm`-risk routes
+- `--json` — machine-readable response output
+
+**Risk enforcement:**
+- `blocked` → refused immediately with an error message
+- `confirm` without `--yes` and without a TTY → refused; with a TTY → prompts `y/N`
+- `confirm` with `--yes` → executes directly (use only after the user has confirmed)
+
+```bash
+# Read route — no prompt
+haszno api get /api/agent/products
+
+# Read with query param
+haszno api get /api/agent/proposals --query status=pending
+
+# Write route — TTY prompt
+haszno api post /api/agent/proposals \
+  --data '{"productId":42,"proposedPriceGross":4490,"reason":"Piaci min","nonce":"abc123"}'
+
+# Confirm-risk route — pre-confirmed in a script
+haszno api post /api/catalog/proposals/approve \
+  --data '{"ids":[1,2,3]}' --yes
+
+# Read from file
+haszno api post /api/agent/proposals --data @proposal.json
+
+# Force spec refresh
+haszno api ls orders --refresh
+```
+
+**Never pass `--yes` automatically without prior user confirmation.**

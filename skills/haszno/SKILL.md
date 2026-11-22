@@ -100,6 +100,7 @@ Detailed references live in `references/`:
 - [`references/tools.md`](references/tools.md) — full MCP tool catalogue (with per-tool credential scope)
 - [`references/commands.md`](references/commands.md) — full CLI command catalogue
 - [`references/recipes.md`](references/recipes.md) — step-by-step workflow recipes (Recipe 23 *(béta)*: Webshop-admin API nélkül: Haszno + ego-browser)
+- [`references/agent-api-discovery.md`](references/agent-api-discovery.md) — API discovery workflow, risk levels, generic tools, CLI, pricing business rules, compact tool table
 
 ---
 
@@ -138,13 +139,23 @@ Never print, log, or echo credentials.
 | Operation | Per-shop token | Legacy key |
 |---|---|---|
 | Check identity (`GET /api/v1/auth/me`) | ✅ | ✅ |
-| List products + margins (`GET /api/v1/agent/products`) | ✅ | ✅ |
-| List last 20 orders (`GET /api/v1/agent/orders`) | ✅ | ✅ |
+| List products + margins (`haszno_catalog_list_products`) | ✅ | ✅ |
+| List orders — all statuses (`haszno_list_orders`) | ✅ | ✅ |
+| Approve / reject / cancel order (`haszno_approve_order` etc.) | ✅ (confirm-risk) | ✅ |
+| Returns and warranty claims | ✅ | ✅ |
+| Coupons | ✅ | ✅ |
+| Shop settings + shipping rules | ✅ | ✅ |
+| Search supplier catalogue (`haszno_catalog_search_catalogue`) | ✅ | ✅ |
+| Stage + push products to shop | ✅ | ✅ |
+| Automation rules (`haszno_catalog_list_rules`, `haszno_catalog_run_rule`) | ✅ | ✅ |
+| Pricing proposals (`haszno_catalog_list_proposals`, `haszno_catalog_approve_proposals`) | ✅ (confirm-risk) | ✅ |
+| Dynamic pricing strategy (`haszno_catalog_set_shop_pricing`, `haszno_catalog_reprice_shop`) | ✅ (confirm-risk) | ✅ |
+| Discover any endpoint (`haszno_api_list` / `haszno_api_describe` / `haszno_api_call`) | ✅ | ✅ |
 | List / submit proposals | ✅ (submit = write-scope) | ✅ |
-| **Approve / reject / rollback proposals** | ❌ 403 (human via web UI) | ✅ |
+| **Approve / reject / rollback proposals (legacy path)** | ❌ 403 (human via web UI) | ✅ |
 | All `haszno_shop_*` marketplace tools | ✅ | ✅ |
-| Account stats / settings / automation rules | ❌ | ✅ |
-| Import list, feeds, catalog management | ❌ | ✅ |
+| Account stats / settings / automation rules (legacy) | ❌ | ✅ |
+| Legacy import list, feeds, catalog management | ❌ | ✅ |
 | Billing, team, GDPR | ❌ | ❌ (session cookie only) |
 
 ### Via MCP (Claude Desktop / Claude Code)
@@ -204,6 +215,53 @@ HTTP client under the hood. Use whichever is natural for your surface.
 
 CLI and MCP also share the same API key and config directory (`~/.config/haszno`),
 so `haszno login` (or setting `HASZNO_API_KEY`) once configures both.
+
+---
+
+## API discovery — when no typed tool exists
+
+The Haszno server publishes its entire live route table at `GET https://haszno.com/api/openapi.json`.
+Three generic MCP tools let an agent discover and call any endpoint without a new MCP release.
+
+**Always prefer a typed tool first.** The generic tools are for endpoints not yet covered by a named
+tool (e.g. `haszno_shop_*`, `haszno_booking_*`, `haszno_list_orders`, `haszno_catalog_*`).
+
+### Discovery workflow
+
+```
+1. haszno_api_list(query="…")           → find the route (method, path, risk)
+2. haszno_api_describe(method, path)    → inspect params + schemas
+3. haszno_api_call(method, path, body,  → execute
+                   confirm=true)          (confirm:true required for risk=confirm)
+```
+
+CLI equivalent: `haszno api ls [query]` → `haszno api describe <M> <path>` → `haszno api <M> <path> [--yes]`
+
+### Risk levels
+
+| Level | Meaning | Rule |
+|---|---|---|
+| `read` | Safe GET; no side-effects | Call freely |
+| `write` | Modifies data; reversible | Show diff, get user confirmation, then call |
+| `confirm` | High-impact: money, publish, e-mail, irreversible delete | **Ask human first**; only pass `confirm: true` after they say yes |
+| `blocked` | Admin / cron / auth-bootstrap route | Refuse immediately; never try to work around it |
+
+Without `confirm: true`, `haszno_api_call` returns a dry-run description and stops.
+`blocked` paths are refused before any network call — the registry excludes them.
+
+### Pricing business rules (apply to ALL pricing tools, typed or generic)
+
+- **Absolute price floor**: the API never prices below `effectiveWholesaleNet + minimum profit`.
+  A price below the floor returns `422`. Never retry with a lower price.
+- **Per-shop isolation**: each shop's pricing is computed from that shop's own cost + its own
+  rules + public market prices only. Never use or expose another reseller's prices or rules.
+  Copy must say "minden bolt a saját árszabálya szerint áraz" — never "összehangolt" or "közös ár".
+- **Confirm gate**: `haszno_catalog_approve_proposals`, `haszno_catalog_reprice_shop`, and
+  `haszno_catalog_push_to_shop` are `confirm`-risk — always ask the human before executing.
+- **Order approval** (`haszno_approve_order`) triggers stock reservation and supplier forwarding:
+  `confirm`-risk, human-in-the-loop by design.
+
+Full workflow details and compact tool table: [`references/agent-api-discovery.md`](references/agent-api-discovery.md)
 
 ---
 
@@ -528,11 +586,15 @@ Contact details (phone, e-mail) become visible to the other party only after acc
 | `shop` | `haszno_shop_list_categories`, `haszno_shop_search_ads`, `haszno_shop_get_ad`, `haszno_shop_price_hint`, `haszno_shop_list_my_ads`, `haszno_shop_list_inquiries`, `haszno_shop_list_favorites`, `haszno_shop_list_reservations`, `haszno_shop_suggest_from_photos`, `haszno_shop_list_messages`, `haszno_shop_list_saved_searches`, `haszno_shop_get_draft` | `haszno_shop_upload_image`, `haszno_shop_create_ad`, `haszno_shop_update_ad`, `haszno_shop_set_ad_status`, `haszno_shop_mark_sold`, `haszno_shop_renew_ad`, `haszno_shop_send_inquiry`, `haszno_shop_reply_inquiry`, `haszno_shop_set_favorite`, `haszno_shop_reserve_ad`, `haszno_shop_respond_reservation`, `haszno_shop_cancel_reservation`, `haszno_shop_complete_reservation`, `haszno_shop_counter_offer`, `haszno_shop_accept_counter`, `haszno_shop_send_message`, `haszno_shop_review` _(confirm)_, `haszno_shop_save_search`, `haszno_shop_delete_saved_search`, `haszno_shop_watch_price`, `haszno_shop_import_from_url`, `haszno_shop_save_draft`, `haszno_shop_clear_draft`, `haszno_shop_remove_background` |
 | `proposals` | `list` _(any auth)_ | `propose` _(shop token write-scope)_; `approve`, `reject`, `rollback` _(legacy key only)_ |
 | `rules` | `list`, `list_templates`, `list_runs`, `automation_get` _(legacy key)_ | `create`, `update`, `delete`, `run`, `run_all`, `trigger`, `automation_set` _(legacy key)_ |
-| `orders` | `list` | `ship`, `receive` |
+| `orders` _(legacy)_ | `list` | `ship`, `receive` |
+| `orders` _(typed)_ | `haszno_list_orders`, `haszno_get_approval_threshold`, `haszno_list_returns`, `haszno_get_return`, `haszno_list_warranty_claims`, `haszno_get_warranty_claim`, `haszno_list_coupons`, `haszno_list_shop_connections`, `haszno_get_shipping_rules`, `haszno_get_shop_settings`, `haszno_get_notification_prefs` | `haszno_ship_order`, `haszno_set_approval_threshold`, `haszno_create_coupon`, `haszno_update_coupon`, `haszno_update_shop_settings`, `haszno_set_shipping_rules`, `haszno_update_notification_prefs`; `haszno_approve_order`, `haszno_reject_order`, `haszno_cancel_order`, `haszno_delete_coupon` _(confirm)_ |
+| `catalog` _(typed)_ | `haszno_catalog_list_products`, `haszno_catalog_search_catalogue`, `haszno_catalog_list_import_list`, `haszno_catalog_list_rules`, `haszno_catalog_list_proposals`, `haszno_catalog_get_shop_pricing` | `haszno_catalog_update_product`, `haszno_catalog_toggle_listing`, `haszno_catalog_add_to_import_list`, `haszno_catalog_create_rule`, `haszno_catalog_update_rule`, `haszno_catalog_set_shop_pricing`; `haszno_catalog_push_to_shop`, `haszno_catalog_discard_import_list`, `haszno_catalog_delete_rule`, `haszno_catalog_run_rule`, `haszno_catalog_approve_proposals`, `haszno_catalog_reject_proposals`, `haszno_catalog_reprice_shop` _(confirm)_ |
+| `api discovery` | `haszno_api_list`, `haszno_api_describe` | `haszno_api_call` _(risk varies)_ |
 | `ideas` | `list` | `fill_keywords` |
 | `feeds` | — | `import_supplier`, `import_market` |
 
 Full signatures: `references/tools.md` (MCP) and `references/commands.md` (CLI).
+Compact tool table with risk levels: `references/agent-api-discovery.md`.
 
 ---
 
