@@ -201,9 +201,10 @@ can be shown when displaying a price as a discount. The API manages this automat
 
 ### 5. Order approval and proposal approval — human-in-the-loop by design
 
-- `haszno_catalog_approve_proposals` — CONFIRM risk; Bearer tokens for per-shop agents
-  may call this, but only after `confirm: true`. The owner clicks "Jóváhagyás" in the UI
-  for routine flows.
+- `haszno_catalog_approve_proposals` — the server refuses price-proposal approval for API keys
+  (`/api/proposals/approve` returns 403 for Bearer callers, by design: `rejectBearerOnApproval` in
+  the Haszno API). An agent can list and explain proposals; the owner approves them in the UI
+  („Jóváhagyás”). Do not retry or look for another route.
 - Order approve (`haszno_approve_order`) — CONFIRM risk; triggers stock reservation and
   supplier forwarding.
 - Both are intentionally `confirm`-gated to keep a human in the loop for money-moving

@@ -1893,6 +1893,8 @@ List pricing proposals by status.
 ### `haszno_catalog_approve_proposals` _(write — confirm required)_
 
 Bulk-approve pricing proposals. The API checks the price floor before approving.
+**With an API key the server returns 403 by design** (`rejectBearerOnApproval`): proposal approval
+is a human step in the UI. Use this tool only to explain that and point the owner to „Jóváhagyás”.
 
 **Parameters:** `ids` _(integer[])_, `confirm` _(boolean — must be `true`)_
 

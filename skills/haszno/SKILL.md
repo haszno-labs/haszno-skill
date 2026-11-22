@@ -148,7 +148,7 @@ Never print, log, or echo credentials.
 | Search supplier catalogue (`haszno_catalog_search_catalogue`) | ✅ | ✅ |
 | Stage + push products to shop | ✅ | ✅ |
 | Automation rules (`haszno_catalog_list_rules`, `haszno_catalog_run_rule`) | ✅ | ✅ |
-| Pricing proposals (`haszno_catalog_list_proposals`, `haszno_catalog_approve_proposals`) | ✅ (confirm-risk) | ✅ |
+| Pricing proposals (`haszno_catalog_list_proposals`; approval only in the UI — API keys get 403) | ✅ (list only) | ✅ |
 | Dynamic pricing strategy (`haszno_catalog_set_shop_pricing`, `haszno_catalog_reprice_shop`) | ✅ (confirm-risk) | ✅ |
 | Discover any endpoint (`haszno_api_list` / `haszno_api_describe` / `haszno_api_call`) | ✅ | ✅ |
 | List / submit proposals | ✅ (submit = write-scope) | ✅ |
@@ -256,8 +256,9 @@ Without `confirm: true`, `haszno_api_call` returns a dry-run description and sto
 - **Per-shop isolation**: each shop's pricing is computed from that shop's own cost + its own
   rules + public market prices only. Never use or expose another reseller's prices or rules.
   Copy must say "minden bolt a saját árszabálya szerint áraz" — never "összehangolt" or "közös ár".
-- **Confirm gate**: `haszno_catalog_approve_proposals`, `haszno_catalog_reprice_shop`, and
-  `haszno_catalog_push_to_shop` are `confirm`-risk — always ask the human before executing.
+- **Confirm gate**: `haszno_catalog_reprice_shop` and `haszno_catalog_push_to_shop` are
+  `confirm`-risk — always ask the human before executing. Price-proposal approval is refused for
+  API keys (403, by design): the owner approves proposals in the UI.
 - **Order approval** (`haszno_approve_order`) triggers stock reservation and supplier forwarding:
   `confirm`-risk, human-in-the-loop by design.
 
