@@ -54,6 +54,8 @@ az azonosítható, változatlan skillt és letöltéseket törli. Régi telepít
 az egyező CLI-linket és Claude MCP-bekötést eltávolíthatja, a jelöletlen
 könyvtárakat viszont kézi átnézésre meghagyja. Ha telepítéskor megadtad a
 `HASZNO_HOME`, `CLAUDE_SKILL_DIR` vagy `HASZNO_SRC_DIR` változót, használd újra.
+Régi, jelöletlen `HASZNO_SRC_DIR` fejlesztői másolat frissítéséhez válassz
+új `HASZNO_HOME` könyvtárat; a telepítő nem írja felül a régit.
 
 ---
 

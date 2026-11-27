@@ -5,6 +5,7 @@ installer="$(cd "$(dirname "$0")/.." && pwd)/install.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
 export HOME="$tmp/home" HASZNO_HOME="$tmp/home/.haszno"
+export GIT_CONFIG_GLOBAL="$HOME/.gitconfig" GIT_CONFIG_NOSYSTEM=1
 export HASZNO_SRC_DIR="$tmp/src" CLAUDE_SKILL_DIR="$tmp/home/.claude/skills"
 export CLAUDE_CONFIG_DIR="$tmp/claude"
 export npm_config_prefix="$tmp/npm" npm_config_audit=false npm_config_fund=false npm_config_offline=true

@@ -55,6 +55,8 @@ installations without ownership markers it can remove matching CLI links and
 the matching Claude MCP registration but leaves the unmarked directories for
 manual review. Use the same overrides as during installation if you used
 `HASZNO_HOME`, `CLAUDE_SKILL_DIR`, or `HASZNO_SRC_DIR`.
+To refresh an old, unmarked development copy made with `HASZNO_SRC_DIR`,
+choose a new `HASZNO_HOME`; the installer will not overwrite the old copy.
 
 ---
 
