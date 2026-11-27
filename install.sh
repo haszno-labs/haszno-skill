@@ -7,6 +7,7 @@
 # Használat / Usage:
 #   bash install.sh              # telepítés / install
 #   bash install.sh --uninstall  # eltávolítás / uninstall
+#   bash install.sh --uninstall --dry-run  # csak lista / preview only
 #
 # Egysoros telepítés / one-liner:
 #   curl -fsSL https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh | bash
@@ -26,6 +27,8 @@ CLAUDE_SKILL_DIR="${CLAUDE_SKILL_DIR:-$HOME/.claude/skills}"
 REPOS=(haszno-cli haszno-mcp haszno-skill)
 GITHUB_ORG="haszno-labs"
 GITHUB_BASE="https://github.com/${GITHUB_ORG}"
+OWNER_FILE=".haszno-installer-owned"
+DRY_RUN=false
 
 # ---------------------------------------------------------------------------
 # Segédfüggvények / Helpers
@@ -34,6 +37,22 @@ log()  { printf '\033[1;32m[haszno]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[haszno][FIGYELEM]\033[0m %s\n' "$*" >&2; }
 err()  { printf '\033[1;31m[haszno][HIBA]\033[0m %s\n' "$*" >&2; exit 1; }
 step() { printf '\033[1;34m[haszno] ──▶\033[0m %s\n' "$*"; }
+
+owned_by_installer() {
+  local dir="$1" purpose="$2"
+  [ ! -L "$dir" ] && [ ! -L "$dir/$OWNER_FILE" ] && [ -f "$dir/$OWNER_FILE" ] &&
+    [ "$(cat "$dir/$OWNER_FILE")" = "$purpose" ]
+}
+
+remove_owned() {
+  local path="$1"
+  if "$DRY_RUN"; then
+    log "Eltávolítaná / Would remove: $path"
+  else
+    rm -rf -- "$path"
+    log "Eltávolítva / Removed: $path"
+  fi
+}
 
 # ---------------------------------------------------------------------------
 # Előfeltételek ellenőrzése / Check prerequisites
@@ -67,28 +86,44 @@ ensure_repo() {
   local dest="$HASZNO_HOME/$repo"
 
   step "Repó: $repo"
+  if [ -L "$dest" ]; then
+    err "A telepítés célja egy szimbolikus link; nem írjuk felül: $dest"
+  fi
+  if [ -e "$dest" ] && ! owned_by_installer "$dest" git && ! owned_by_installer "$dest" copy; then
+    [ -d "$dest" ] || err "A telepítés célja nem könyvtár: $dest"
+    warn "Meglévő könyvtár, nincs felülírás / Existing directory, not replaced: $dest"
+    return 0
+  fi
 
   # Helyi forrás override
   if [ -n "$HASZNO_SRC_DIR" ]; then
     local src="$HASZNO_SRC_DIR/$repo"
+    if owned_by_installer "$dest" git; then
+      err "A cél egy Git-klón; helyi másolathoz használj másik HASZNO_HOME könyvtárat: $dest"
+    fi
     if [ ! -d "$src" ]; then
       err "HASZNO_SRC_DIR=$HASZNO_SRC_DIR megadva, de '$src' nem létezik."
     fi
     if [ -d "$dest" ]; then
       log "  Frissítés helyi forrásból: $src → $dest"
-      rsync -a --delete --exclude='.git' --exclude='node_modules' --exclude='dist' \
+      rsync -a --exclude="$OWNER_FILE" --exclude='.git' --exclude='node_modules' --exclude='dist' \
         "$src/" "$dest/"
     else
       log "  Másolás helyi forrásból: $src → $dest"
       mkdir -p "$dest"
-      rsync -a --exclude='.git' --exclude='node_modules' --exclude='dist' \
+      rsync -a --exclude="$OWNER_FILE" --exclude='.git' --exclude='node_modules' --exclude='dist' \
         "$src/" "$dest/"
     fi
+    # Claim only directories the installer created, never a pre-existing checkout.
+    [ -e "$dest/$OWNER_FILE" ] || printf '%s\n' copy > "$dest/$OWNER_FILE"
     return 0
   fi
 
   # GitHub klón/pull
-  if [ -d "$dest/.git" ]; then
+  if owned_by_installer "$dest" copy; then
+    err "A cél egy helyi másolat; Git-klónhoz használj másik HASZNO_HOME könyvtárat: $dest"
+  fi
+  if [ -d "$dest/.git" ] && [ ! -L "$dest/.git" ]; then
     log "  Már megvan, frissítés (git pull)..."
     git -C "$dest" pull --ff-only --quiet || warn "  git pull nem sikerült, folytatás a meglévő verzióval."
     return 0
@@ -101,6 +136,7 @@ ensure_repo() {
     if gh auth status >/dev/null 2>&1; then
       log "  Klónozás: gh repo clone ${GITHUB_ORG}/${repo} $dest"
       gh repo clone "${GITHUB_ORG}/${repo}" "$dest" -- --quiet
+      printf '%s\n' git > "$dest/$OWNER_FILE"
       return 0
     else
       warn "  gh telepítve, de nincs bejelentkezve. Fallback: git clone (HTTPS)."
@@ -112,6 +148,7 @@ ensure_repo() {
   log "  Klónozás: git clone $url"
   git clone --quiet "$url" "$dest" \
     || err "Klónozás sikertelen: $url"
+  printf '%s\n' git > "$dest/$OWNER_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -121,7 +158,14 @@ build_package() {
   local repo="$1"
   local dest="$HASZNO_HOME/$repo"
   step "Build: $repo"
-  ( cd "$dest" && npm install --quiet && npm run build )
+  if ! owned_by_installer "$dest" git && ! owned_by_installer "$dest" copy; then
+    [ -f "$dest/dist/index.js" ] || err "Meglévő könyvtár build nélkül; használj másik HASZNO_HOME könyvtárat: $dest"
+    warn "Meglévő build használata módosítás nélkül: $dest"
+    return 0
+  fi
+  ( cd "$dest" &&
+    if [ -f package-lock.json ]; then npm ci --quiet; else npm install --quiet; fi &&
+    npm run build )
   log "  $repo: build kész."
 }
 
@@ -131,16 +175,25 @@ build_package() {
 link_cli() {
   local cli_dir="$HASZNO_HOME/haszno-cli"
   step "CLI globális linkelése..."
+  if command -v haszno >/dev/null 2>&1; then
+    log "  Meglévő 'haszno' parancs: nem írjuk felül."
+    return 0
+  fi
 
   # Próbáljuk meg npm link-kel
-  if ( cd "$cli_dir" && npm link --quiet 2>/dev/null ); then
+  local npm_root npm_prefix
+  npm_root=$(npm root -g) || return 1
+  npm_prefix=$(npm prefix -g) || return 1
+  if [ ! -e "$npm_root/@haszno/cli" ] && [ ! -L "$npm_root/@haszno/cli" ] &&
+    [ ! -e "$npm_prefix/bin/haszno" ] && [ ! -L "$npm_prefix/bin/haszno" ] &&
+    ( cd "$cli_dir" && npm link --quiet 2>/dev/null ); then
     log "  'haszno' elérhető (npm link)."
     return 0
   fi
 
   # Fallback: ~/.local/bin symlink
   local bin_dir="$HOME/.local/bin"
-  mkdir -p "$bin_dir"
+  mkdir -p "$bin_dir" || return 1
   local cli_bin="$cli_dir/dist/index.js"
   local link_target="$bin_dir/haszno"
 
@@ -149,8 +202,11 @@ link_cli() {
     return 1
   fi
 
-  ln -sf "$cli_bin" "$link_target"
-  chmod +x "$cli_bin"
+  if [ -e "$link_target" ] || [ -L "$link_target" ]; then
+    warn "  Meglévő CLI bejegyzés, nincs felülírás: $link_target"
+    return 0
+  fi
+  ln -s "$cli_bin" "$link_target" || return 1
   log "  Symlink: $link_target → $cli_bin"
   log "  Győződj meg róla, hogy a \$PATH tartalmazza: $bin_dir"
 }
@@ -174,12 +230,12 @@ register_mcp() {
   fi
 
   # Ellenőrzés: már regisztrálva van-e?
-  if claude mcp list 2>/dev/null | grep -q '^haszno\b'; then
+  if claude mcp get haszno >/dev/null 2>&1; then
     log "  'haszno' MCP már regisztrálva van — kihagyás."
     return 0
   fi
 
-  claude mcp add haszno --scope user -- node "$mcp_bin"
+  claude mcp add haszno --scope user -- node "$mcp_bin" || return 1
   log "  MCP 'haszno' regisztrálva."
 }
 
@@ -197,9 +253,13 @@ install_skill() {
     return 1
   fi
 
-  mkdir -p "$CLAUDE_SKILL_DIR"
-  rm -rf "$skill_dest"
-  cp -a "$skill_src" "$skill_dest"
+  if [ -e "$skill_dest" ] || [ -L "$skill_dest" ]; then
+    warn "  Meglévő skill, nincs felülírás / Existing skill, not replaced: $skill_dest"
+    return 0
+  fi
+  mkdir -p "$CLAUDE_SKILL_DIR" || return 1
+  cp -a "$skill_src" "$skill_dest" || return 1
+  printf '%s\n' skill > "$skill_dest/$OWNER_FILE" || return 1
   log "  Skill másolva: $skill_dest"
 }
 
@@ -209,42 +269,85 @@ install_skill() {
 uninstall() {
   step "Eltávolítás / Uninstalling..."
 
-  # Skill törlése
+  local repo dest changes npm_root npm_prefix npm_cli
+  local cli_bin="$HASZNO_HOME/haszno-cli/dist/index.js"
   local skill_dest="$CLAUDE_SKILL_DIR/haszno"
-  if [ -d "$skill_dest" ]; then
-    rm -rf "$skill_dest"
-    log "  Skill eltávolítva: $skill_dest"
+  local skill_src="$HASZNO_HOME/haszno-skill/skills/haszno"
+  if owned_by_installer "$skill_dest" skill &&
+    diff -qr -x "$OWNER_FILE" "$skill_src" "$skill_dest" >/dev/null 2>&1; then
+    remove_owned "$skill_dest"
+  elif [ -e "$skill_dest" ] || [ -L "$skill_dest" ]; then
+    warn "Megmarad: nem igazolt vagy módosított skill / Keeping unverified or modified skill: $skill_dest"
   fi
 
-  # MCP törlése
-  if command -v claude >/dev/null 2>&1; then
-    if claude mcp list 2>/dev/null | grep -q '^haszno\b'; then
-      claude mcp remove haszno --scope user 2>/dev/null || true
-      log "  MCP 'haszno' törölve."
+  # Read user-scope Claude configuration without probing or starting any MCP server.
+  local claude_config="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  if [ -f "$claude_config" ]; then
+    if command -v node >/dev/null 2>&1 && node - "$claude_config" "$HASZNO_HOME/haszno-mcp/dist/index.js" <<'NODE'
+try {
+  const config = JSON.parse(require('node:fs').readFileSync(process.argv[2], 'utf8'));
+  const server = config.mcpServers?.haszno;
+  if (server?.type === 'stdio' && server.command === 'node' &&
+      Array.isArray(server.args) && server.args.length === 1 && server.args[0] === process.argv[3] &&
+      Object.keys(server.env ?? {}).length === 0) process.exit(0);
+} catch {}
+process.exit(1);
+NODE
+    then
+      if "$DRY_RUN"; then
+        log "Eltávolítaná / Would remove: Claude MCP haszno"
+      else
+        command -v claude >/dev/null 2>&1 || err "A Claude CLI szükséges az MCP eltávolításához."
+        claude mcp remove haszno --scope user || err "A Haszno MCP eltávolítása nem sikerült."
+      fi
     fi
   fi
 
-  # CLI symlink törlése
   local link_target="$HOME/.local/bin/haszno"
-  if [ -L "$link_target" ]; then
-    rm -f "$link_target"
-    log "  CLI symlink törölve: $link_target"
+  if [ -L "$link_target" ] && [ "$(readlink "$link_target")" = "$cli_bin" ]; then
+    remove_owned "$link_target"
   fi
 
-  # npm unlink (best-effort)
-  local cli_dir="$HASZNO_HOME/haszno-cli"
-  if [ -d "$cli_dir" ]; then
-    ( cd "$cli_dir" && npm unlink --quiet 2>/dev/null ) || true
+  if command -v npm >/dev/null 2>&1 && npm_root=$(npm root -g) && npm_prefix=$(npm prefix -g); then
+    npm_cli="$npm_root/@haszno/cli"
+    if [ -L "$npm_cli" ] && [ -d "$HASZNO_HOME/haszno-cli" ] &&
+      [ "$(cd -P "$npm_cli" && pwd)" = "$(cd -P "$HASZNO_HOME/haszno-cli" && pwd)" ]; then
+      # Removing a global package may unlink its bin; don't touch it if the bin was replaced.
+      local npm_bin="$npm_prefix/bin/haszno"
+      local expected_bin="../lib/node_modules/@haszno/cli/dist/index.js"
+      if { [ ! -e "$npm_bin" ] && [ ! -L "$npm_bin" ]; } ||
+        { [ -L "$npm_bin" ] && { [ "$(readlink "$npm_bin")" = "$expected_bin" ] || [ "$(readlink "$npm_bin")" = "$cli_bin" ]; }; }; then
+        if "$DRY_RUN"; then
+          log "Eltávolítaná / Would remove: @haszno/cli (npm link)"
+        else
+          npm uninstall --global --quiet @haszno/cli || err "A Haszno npm-link eltávolítása nem sikerült."
+        fi
+      else
+        warn "Megmarad: módosított npm parancs / Keeping replaced npm command: $npm_bin"
+        return 1
+      fi
+    fi
   fi
 
-  # HASZNO_HOME törlése
-  if [ -d "$HASZNO_HOME" ]; then
-    chmod -R u+rwx "$HASZNO_HOME" 2>/dev/null || true
-    rm -rf "$HASZNO_HOME"
-    log "  Könyvtár törölve: $HASZNO_HOME"
-  fi
-
-  log "Haszno eltávolítva."
+  # Remove only tracked downloads. A legacy or locally changed working copy is kept.
+  for repo in "${REPOS[@]}"; do
+    dest="$HASZNO_HOME/$repo"
+    if owned_by_installer "$dest" git && [ -d "$dest/.git" ] && [ ! -L "$dest/.git" ] &&
+      changes=$(git -C "$dest" status --short -- . ":(exclude)$OWNER_FILE") && [ -z "$changes" ] &&
+      changes=$(git -C "$dest" ls-files --others --ignored --exclude-standard -- . ':(exclude,top)dist' ':(exclude,top)node_modules') &&
+      [ -z "$changes" ] &&
+      [ -z "$(git -C "$dest" for-each-ref --format='%(refname)' --no-merged '@{upstream}' refs/heads refs/tags refs/stash)" ] &&
+      git -C "$dest" merge-base --is-ancestor HEAD '@{upstream}'; then
+      remove_owned "$dest"
+    elif owned_by_installer "$dest" copy && [ -n "$HASZNO_SRC_DIR" ] && [ -d "$HASZNO_SRC_DIR/$repo" ] &&
+      changes=$(rsync -rclni --delete --exclude="$OWNER_FILE" --exclude='.git' --exclude='node_modules' --exclude='dist' \
+        "$HASZNO_SRC_DIR/$repo/" "$dest/") && [ -z "$changes" ]; then
+      remove_owned "$dest"
+    elif [ -e "$dest" ] || [ -L "$dest" ]; then
+      warn "Megmarad: régi, ismeretlen vagy módosított könyvtár / Keeping legacy, unverified or modified directory: $dest"
+    fi
+  done
+  log "Ellenőrzés kész / Cleanup check complete."
 }
 
 # ---------------------------------------------------------------------------
@@ -276,7 +379,7 @@ print_summary() {
   log "   export HASZNO_API_URL=https://haszno.com"
   log "   export HASZNO_API_KEY=your-api-key"
   log ""
-  log " Eltávolítás: bash $HASZNO_HOME/haszno-skill/install.sh --uninstall"
+  log " Eltávolítás: töltsd le a friss telepítőt, majd: bash haszno-install.sh --uninstall --dry-run"
   printf '\n'
 }
 
@@ -284,13 +387,21 @@ print_summary() {
 # Belépési pont / Entry point
 # ---------------------------------------------------------------------------
 main() {
+  case "${1:-}" in
+    --uninstall|uninstall)
+      case "${2:-}" in
+        '') [ "$#" -eq 1 ] || err "Használat: install.sh --uninstall [--dry-run]" ;;
+        --dry-run) [ "$#" -eq 2 ] || err "Használat: install.sh --uninstall [--dry-run]"; DRY_RUN=true ;;
+        *) err "Használat: install.sh --uninstall [--dry-run]" ;;
+      esac
+      uninstall
+      return 0
+      ;;
+    '') ;;
+    *) err "Használat: install.sh [--uninstall [--dry-run]]" ;;
+  esac
   # Shellcheck futtatása induláskor (nem blokkoló)
   run_shellcheck
-
-  if [ "${1:-}" = "--uninstall" ]; then
-    uninstall
-    return 0
-  fi
 
   log "Haszno telepítő indul... (HASZNO_HOME=$HASZNO_HOME)"
   mkdir -p "$HASZNO_HOME"
