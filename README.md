@@ -39,11 +39,24 @@ HASZNO_SRC_DIR=~/Documents/medusa-shops/haszno-labs \
   bash install.sh
 ```
 
-Revert all changes with `--uninstall`:
+### Uninstall
+
+Download the installer and preview what it would remove before running it:
 
 ```bash
-bash ~/.haszno/haszno-skill/install.sh --uninstall
+curl -fsSLo haszno-install.sh https://raw.githubusercontent.com/haszno-labs/haszno-skill/main/install.sh
+bash haszno-install.sh --uninstall --dry-run
+bash haszno-install.sh --uninstall
 ```
+
+The uninstaller keeps CLI login settings, other tools and files, and any skill
+or checkout it cannot identify as installer-owned and unchanged. For older
+installations without ownership markers it can remove matching CLI links and
+the matching Claude MCP registration but leaves the unmarked directories for
+manual review. Use the same overrides as during installation if you used
+`HASZNO_HOME`, `CLAUDE_SKILL_DIR`, or `HASZNO_SRC_DIR`.
+To refresh an old, unmarked development copy made with `HASZNO_SRC_DIR`,
+choose a new `HASZNO_HOME`; the installer will not overwrite the old copy.
 
 ---
 
