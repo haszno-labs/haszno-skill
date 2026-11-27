@@ -180,7 +180,7 @@ build_package() {
     return 0
   fi
   ( cd "$dest" &&
-    if [ -f package-lock.json ]; then npm ci --quiet; else npm install --quiet; fi &&
+    if [ -f package-lock.json ]; then npm ci --quiet; else npm install --quiet --no-package-lock; fi &&
     npm run build )
   log "  $repo: build kész."
 }
@@ -221,6 +221,10 @@ link_cli() {
   if [ -e "$link_target" ] || [ -L "$link_target" ]; then
     warn "  Meglévő CLI bejegyzés, nincs felülírás: $link_target"
     return 0
+  fi
+  if [ ! -x "$cli_bin" ]; then
+    { owned_by_installer "$cli_dir" git || owned_by_installer "$cli_dir" copy; } &&
+      [ ! -L "$cli_bin" ] && chmod +x -- "$cli_bin" || return 1
   fi
   ln -s "$cli_bin" "$link_target" || return 1
   log "  Symlink: $link_target → $cli_bin"

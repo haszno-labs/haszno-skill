@@ -10,7 +10,15 @@ export CLAUDE_CONFIG_DIR="$tmp/claude"
 export npm_config_prefix="$tmp/npm" npm_config_audit=false npm_config_fund=false npm_config_offline=true
 mkdir -p "$tmp/bin" "$HOME/.config/haszno" "$CLAUDE_CONFIG_DIR" "$HASZNO_HOME" "$HASZNO_SRC_DIR/haszno-skill/skills/haszno"
 ln -s "$(command -v node)" "$tmp/bin/node"
-ln -s "$(command -v npm)" "$tmp/bin/npm"
+ln -s "$(command -v npm)" "$tmp/bin/real-npm"
+cat > "$tmp/bin/npm" <<'EOF'
+#!/usr/bin/env bash
+if [ "${HASZNO_TEST_FORCE_FALLBACK:-}" = true ] && [ "${1:-}" = link ]; then
+  exit 1
+fi
+exec "$(dirname "$0")/real-npm" "$@"
+EOF
+chmod +x "$tmp/bin/npm"
 export PATH="$tmp/bin:$npm_config_prefix/bin:$HOME/.local/bin:/usr/bin:/bin"
 printf 'keep\n' > "$HASZNO_HOME/personal.txt"
 printf 'keep\n' > "$HOME/.config/haszno/config.json"
@@ -74,8 +82,10 @@ test -f "$HASZNO_HOME/haszno-cli/work.txt"
 test -f "$CLAUDE_SKILL_DIR/haszno/SKILL.md"
 test "$(readlink "$HOME/.local/bin/haszno")" = "$tmp/other-cli"
 grep -Fq 'https://example.invalid/mcp' "$CLAUDE_CONFIG_DIR/.claude.json"
+rm -- "$HOME/.local/bin/haszno"
 
 # Exercise the default Git cloning path against local fixtures, without GitHub.
+rm -- "$HASZNO_SRC_DIR/haszno-mcp/package-lock.json"
 for repo in haszno-cli haszno-mcp haszno-skill; do
   src="$HASZNO_SRC_DIR/$repo"
   printf 'dist/\nnode_modules/\n.env\n' > "$src/.gitignore"
@@ -87,10 +97,13 @@ done
 printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/bin/gh"
 chmod +x "$tmp/bin/gh"
 git config --global "url.file://$HASZNO_SRC_DIR/.insteadOf" https://github.com/haszno-labs/
-export HASZNO_HOME="$HOME/git-install" CLAUDE_SKILL_DIR="$HOME/git-skills"
+export HASZNO_HOME="$HOME/git-install" CLAUDE_SKILL_DIR="$HOME/git-skills" HASZNO_TEST_FORCE_FALLBACK=true
 unset HASZNO_SRC_DIR
 bash "$installer" >/dev/null
 test -f "$HASZNO_HOME/haszno-cli/.haszno-installer-owned"
+test -L "$HOME/.local/bin/haszno"
+test -x "$HOME/.local/bin/haszno"
+test ! -e "$HASZNO_HOME/haszno-mcp/package-lock.json"
 rm -- "$HASZNO_HOME/haszno-mcp/.haszno-installer-owned"
 printf 'new\n' > "$tmp/src/haszno-mcp/new.txt"
 git -C "$tmp/src/haszno-mcp" add new.txt
@@ -103,6 +116,7 @@ printf 'private\n' > "$HASZNO_HOME/haszno-skill/keep"
 printf 'keep\n' > "$HASZNO_HOME/haszno-mcp/.env"
 bash "$installer" --uninstall >/dev/null
 test ! -e "$HASZNO_HOME/haszno-cli"
+test ! -L "$HOME/.local/bin/haszno"
 test -f "$HASZNO_HOME/haszno-skill/keep"
 test -f "$HASZNO_HOME/haszno-mcp/.env"
 printf 'Installer/uninstaller checks passed.\n'
