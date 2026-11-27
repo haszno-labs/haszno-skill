@@ -223,7 +223,8 @@ link_cli() {
     return 0
   fi
   if [ ! -x "$cli_bin" ]; then
-    { owned_by_installer "$cli_dir" git || owned_by_installer "$cli_dir" copy; } &&
+    { owned_by_installer "$cli_dir" git || owned_by_installer "$cli_dir" copy ||
+      { [ -z "$HASZNO_SRC_DIR" ] && official_checkout "$cli_dir" haszno-cli; }; } &&
       [ ! -L "$cli_bin" ] && chmod +x -- "$cli_bin" || return 1
   fi
   ln -s "$cli_bin" "$link_target" || return 1
@@ -273,7 +274,7 @@ install_skill() {
     return 1
   fi
 
-  if [ "$1" = true ] && owned_by_installer "$skill_dest" skill; then
+  if [ "$1" = true ] && [ ! -L "$skill_dest" ]; then
     rsync -a --delete --exclude="$OWNER_FILE" "$skill_src/" "$skill_dest/" || return 1
     log "  Skill frissítve: $skill_dest"
     return 0
@@ -439,7 +440,9 @@ main() {
 
   # Compare with the old source before pulling new skill files; do not overwrite local edits.
   local refresh_skill=false
-  if owned_by_installer "$CLAUDE_SKILL_DIR/haszno" skill &&
+  if [ ! -L "$CLAUDE_SKILL_DIR/haszno" ] &&
+    { owned_by_installer "$CLAUDE_SKILL_DIR/haszno" skill ||
+      { [ -z "$HASZNO_SRC_DIR" ] && official_checkout "$HASZNO_HOME/haszno-skill" haszno-skill; }; } &&
     diff -qr -x "$OWNER_FILE" "$HASZNO_HOME/haszno-skill/skills/haszno" "$CLAUDE_SKILL_DIR/haszno" >/dev/null 2>&1; then
     refresh_skill=true
   fi

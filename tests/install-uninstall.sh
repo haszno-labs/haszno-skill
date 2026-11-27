@@ -105,12 +105,17 @@ test -L "$HOME/.local/bin/haszno"
 test -x "$HOME/.local/bin/haszno"
 test ! -e "$HASZNO_HOME/haszno-mcp/package-lock.json"
 rm -- "$HASZNO_HOME/haszno-mcp/.haszno-installer-owned"
+rm -- "$CLAUDE_SKILL_DIR/haszno/.haszno-installer-owned"
 printf 'new\n' > "$tmp/src/haszno-mcp/new.txt"
 git -C "$tmp/src/haszno-mcp" add new.txt
 git -C "$tmp/src/haszno-mcp" -c user.name=Test -c user.email=test@example.invalid commit -qm update
+printf 'legacy update\n' > "$tmp/src/haszno-skill/skills/haszno/SKILL.md"
+git -C "$tmp/src/haszno-skill" -c user.name=Test -c user.email=test@example.invalid commit -qam update
 bash "$installer" >/dev/null
 test -f "$HASZNO_HOME/haszno-mcp/new.txt"
 test ! -e "$HASZNO_HOME/haszno-mcp/.haszno-installer-owned"
+grep -Fxq 'legacy update' "$CLAUDE_SKILL_DIR/haszno/SKILL.md"
+test ! -e "$CLAUDE_SKILL_DIR/haszno/.haszno-installer-owned"
 printf 'keep\n' >> "$HASZNO_HOME/haszno-skill/.git/info/exclude"
 printf 'private\n' > "$HASZNO_HOME/haszno-skill/keep"
 printf 'keep\n' > "$HASZNO_HOME/haszno-mcp/.env"
@@ -118,5 +123,6 @@ bash "$installer" --uninstall >/dev/null
 test ! -e "$HASZNO_HOME/haszno-cli"
 test ! -L "$HOME/.local/bin/haszno"
 test -f "$HASZNO_HOME/haszno-skill/keep"
+test -f "$CLAUDE_SKILL_DIR/haszno/SKILL.md"
 test -f "$HASZNO_HOME/haszno-mcp/.env"
 printf 'Installer/uninstaller checks passed.\n'
