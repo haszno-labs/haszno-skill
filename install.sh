@@ -44,6 +44,16 @@ owned_by_installer() {
     [ "$(cat "$dir/$OWNER_FILE")" = "$purpose" ]
 }
 
+official_checkout() {
+  local dir="$1" repo="$2" origin
+  [ ! -L "$dir" ] && [ -d "$dir/.git" ] && [ ! -L "$dir/.git" ] || return 1
+  origin=$(git -C "$dir" config --local --get remote.origin.url) || return 1
+  case "${origin%.git}" in
+    "$GITHUB_BASE/$repo"|"git@github.com:$GITHUB_ORG/$repo"|"ssh://git@github.com/$GITHUB_ORG/$repo") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 remove_owned() {
   local path="$1"
   if "$DRY_RUN"; then
@@ -90,8 +100,13 @@ ensure_repo() {
     err "A telepítés célja egy szimbolikus link; nem írjuk felül: $dest"
   fi
   if [ -e "$dest" ] && ! owned_by_installer "$dest" git && ! owned_by_installer "$dest" copy; then
-    [ -d "$dest" ] || err "A telepítés célja nem könyvtár: $dest"
-    warn "Meglévő könyvtár, nincs felülírás / Existing directory, not replaced: $dest"
+    if [ -z "$HASZNO_SRC_DIR" ] && official_checkout "$dest" "$repo"; then
+      # Keep legacy installs updateable without claiming their files for uninstall.
+      git -C "$dest" pull --ff-only --quiet || warn "  git pull nem sikerült, folytatás a meglévő verzióval."
+    else
+      [ -d "$dest" ] || err "A telepítés célja nem könyvtár: $dest"
+      warn "Meglévő könyvtár, nincs felülírás / Existing directory, not replaced: $dest"
+    fi
     return 0
   fi
 
@@ -106,7 +121,7 @@ ensure_repo() {
     fi
     if [ -d "$dest" ]; then
       log "  Frissítés helyi forrásból: $src → $dest"
-      rsync -a --exclude="$OWNER_FILE" --exclude='.git' --exclude='node_modules' --exclude='dist' \
+      rsync -a --delete --exclude="$OWNER_FILE" --exclude='.git' --exclude='node_modules' --exclude='dist' \
         "$src/" "$dest/"
     else
       log "  Másolás helyi forrásból: $src → $dest"
@@ -158,7 +173,8 @@ build_package() {
   local repo="$1"
   local dest="$HASZNO_HOME/$repo"
   step "Build: $repo"
-  if ! owned_by_installer "$dest" git && ! owned_by_installer "$dest" copy; then
+  if ! owned_by_installer "$dest" git && ! owned_by_installer "$dest" copy &&
+    { [ -n "$HASZNO_SRC_DIR" ] || ! official_checkout "$dest" "$repo"; }; then
     [ -f "$dest/dist/index.js" ] || err "Meglévő könyvtár build nélkül; használj másik HASZNO_HOME könyvtárat: $dest"
     warn "Meglévő build használata módosítás nélkül: $dest"
     return 0
@@ -253,7 +269,11 @@ install_skill() {
     return 1
   fi
 
-  if [ -e "$skill_dest" ] || [ -L "$skill_dest" ]; then
+  if [ "$1" = true ] && owned_by_installer "$skill_dest" skill; then
+    rsync -a --delete --exclude="$OWNER_FILE" "$skill_src/" "$skill_dest/" || return 1
+    log "  Skill frissítve: $skill_dest"
+    return 0
+  elif [ -e "$skill_dest" ] || [ -L "$skill_dest" ]; then
     warn "  Meglévő skill, nincs felülírás / Existing skill, not replaced: $skill_dest"
     return 0
   fi
@@ -269,7 +289,7 @@ install_skill() {
 uninstall() {
   step "Eltávolítás / Uninstalling..."
 
-  local repo dest changes npm_root npm_prefix npm_cli
+  local repo dest changes npm_root npm_prefix npm_cli keep_cli=false
   local cli_bin="$HASZNO_HOME/haszno-cli/dist/index.js"
   local skill_dest="$CLAUDE_SKILL_DIR/haszno"
   local skill_src="$HASZNO_HOME/haszno-skill/skills/haszno"
@@ -324,7 +344,7 @@ NODE
         fi
       else
         warn "Megmarad: módosított npm parancs / Keeping replaced npm command: $npm_bin"
-        return 1
+        keep_cli=true
       fi
     fi
   fi
@@ -332,11 +352,16 @@ NODE
   # Remove only tracked downloads. A legacy or locally changed working copy is kept.
   for repo in "${REPOS[@]}"; do
     dest="$HASZNO_HOME/$repo"
+    if [ "$repo" = haszno-cli ] && "$keep_cli"; then
+      warn "Megmarad az npm-link célkönyvtára / Keeping the linked npm checkout: $dest"
+      continue
+    fi
     if owned_by_installer "$dest" git && [ -d "$dest/.git" ] && [ ! -L "$dest/.git" ] &&
-      changes=$(git -C "$dest" status --short -- . ":(exclude)$OWNER_FILE") && [ -z "$changes" ] &&
+      changes=$(GIT_OPTIONAL_LOCKS=0 git -C "$dest" status --short -- . ":(exclude)$OWNER_FILE") && [ -z "$changes" ] &&
       changes=$(git -C "$dest" ls-files --others --ignored --exclude-standard -- . ':(exclude,top)dist' ':(exclude,top)node_modules') &&
       [ -z "$changes" ] &&
-      [ -z "$(git -C "$dest" for-each-ref --format='%(refname)' --no-merged '@{upstream}' refs/heads refs/tags refs/stash)" ] &&
+      changes=$(git -C "$dest" for-each-ref --format='%(refname)' --no-merged '@{upstream}' refs/heads refs/tags refs/stash) &&
+      [ -z "$changes" ] &&
       git -C "$dest" merge-base --is-ancestor HEAD '@{upstream}'; then
       remove_owned "$dest"
     elif owned_by_installer "$dest" copy && [ -n "$HASZNO_SRC_DIR" ] && [ -d "$HASZNO_SRC_DIR/$repo" ] &&
@@ -408,6 +433,13 @@ main() {
 
   check_prerequisites
 
+  # Compare with the old source before pulling new skill files; do not overwrite local edits.
+  local refresh_skill=false
+  if owned_by_installer "$CLAUDE_SKILL_DIR/haszno" skill &&
+    diff -qr -x "$OWNER_FILE" "$HASZNO_HOME/haszno-skill/skills/haszno" "$CLAUDE_SKILL_DIR/haszno" >/dev/null 2>&1; then
+    refresh_skill=true
+  fi
+
   # 1. Repók klónozása/frissítése
   for repo in "${REPOS[@]}"; do
     ensure_repo "$repo"
@@ -425,7 +457,7 @@ main() {
   register_mcp || warn "MCP regisztrálás részlegesen sikertelen — ellenőrizd kézzel."
 
   # 5. Skill telepítése
-  install_skill || warn "Skill telepítés részlegesen sikertelen — ellenőrizd kézzel."
+  install_skill "$refresh_skill" || warn "Skill telepítés részlegesen sikertelen — ellenőrizd kézzel."
 
   print_summary
 }

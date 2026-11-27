@@ -15,6 +15,7 @@ export PATH="$tmp/bin:$npm_config_prefix/bin:$HOME/.local/bin:/usr/bin:/bin"
 printf 'keep\n' > "$HASZNO_HOME/personal.txt"
 printf 'keep\n' > "$HOME/.config/haszno/config.json"
 printf 'sample\n' > "$HASZNO_SRC_DIR/haszno-skill/skills/haszno/SKILL.md"
+printf 'old\n' > "$HASZNO_SRC_DIR/haszno-skill/skills/haszno/old.txt"
 
 for repo in cli mcp; do
   src="$HASZNO_SRC_DIR/haszno-$repo"
@@ -42,6 +43,11 @@ bash "$installer" >/dev/null
 test -f "$CLAUDE_SKILL_DIR/haszno/SKILL.md"
 test -L "$npm_config_prefix/bin/haszno"
 test -f "$CLAUDE_CONFIG_DIR/.claude.json"
+printf 'updated\n' > "$HASZNO_SRC_DIR/haszno-skill/skills/haszno/SKILL.md"
+rm -- "$HASZNO_SRC_DIR/haszno-skill/skills/haszno/old.txt"
+bash "$installer" >/dev/null
+grep -Fxq updated "$CLAUDE_SKILL_DIR/haszno/SKILL.md"
+test ! -e "$CLAUDE_SKILL_DIR/haszno/old.txt"
 bash "$installer" --uninstall --dry-run > "$tmp/plan"
 grep -Fq 'Would remove' "$tmp/plan"
 grep -Fq 'Would remove: @haszno/cli (npm link)' "$tmp/plan"
@@ -85,9 +91,18 @@ export HASZNO_HOME="$HOME/git-install" CLAUDE_SKILL_DIR="$HOME/git-skills"
 unset HASZNO_SRC_DIR
 bash "$installer" >/dev/null
 test -f "$HASZNO_HOME/haszno-cli/.haszno-installer-owned"
+rm -- "$HASZNO_HOME/haszno-mcp/.haszno-installer-owned"
+printf 'new\n' > "$tmp/src/haszno-mcp/new.txt"
+git -C "$tmp/src/haszno-mcp" add new.txt
+git -C "$tmp/src/haszno-mcp" -c user.name=Test -c user.email=test@example.invalid commit -qm update
+bash "$installer" >/dev/null
+test -f "$HASZNO_HOME/haszno-mcp/new.txt"
+test ! -e "$HASZNO_HOME/haszno-mcp/.haszno-installer-owned"
+printf 'keep\n' >> "$HASZNO_HOME/haszno-skill/.git/info/exclude"
+printf 'private\n' > "$HASZNO_HOME/haszno-skill/keep"
 printf 'keep\n' > "$HASZNO_HOME/haszno-mcp/.env"
 bash "$installer" --uninstall >/dev/null
 test ! -e "$HASZNO_HOME/haszno-cli"
-test ! -e "$HASZNO_HOME/haszno-skill"
+test -f "$HASZNO_HOME/haszno-skill/keep"
 test -f "$HASZNO_HOME/haszno-mcp/.env"
 printf 'Installer/uninstaller checks passed.\n'
